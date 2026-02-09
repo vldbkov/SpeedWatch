@@ -391,11 +391,21 @@ class InternetSpeedMonitor:
         
         self.log_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
                                     yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        
-        # Настройка колонок
-        for col in columns:
+        ###        
+        # Настройка колонок с автошириной и выравниванием по центру
+        for i, col in enumerate(columns):
             self.log_tree.heading(col, text=col)
-            self.log_tree.column(col, width=100)
+            # Столбцы с 1 по 5 (ID, Время, Загрузка, Отдача, Пинг) - выравнивание по центру
+            if i >= 0 and i <= 4:  # Столбцы с индексом 0-4 (ID, Время, Загрузка, Отдача, Пинг)
+                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=tk.YES)
+            else:  # Последний столбец (Сервер) - выравнивание по левому краю
+                self.log_tree.column(col, width=150, anchor=tk.W, stretch=tk.YES)
+        
+        # Автоматическое изменение ширины столбцов при изменении размера окна
+        for i, col in enumerate(columns):
+            self.log_tree.column(col, width=tk.font.Font().measure(col.title()) + 20)
+            
+        ###
         
         self.log_tree.pack(fill='both', expand=True)
         
@@ -811,6 +821,8 @@ class InternetSpeedMonitor:
                     row[5] or "N/A"
                 )
                 self.log_tree.insert('', 'end', values=formatted_row)
+            # Автонастройка ширины столбцов после загрузки данных
+            self.auto_resize_columns()                
             
             conn.close()
             
@@ -820,7 +832,30 @@ class InternetSpeedMonitor:
         except Error as e:
             self.logger.error(f"Ошибка обновления журнала: {e}")
             self.status_var.set(f"Ошибка загрузки журнала: {e}")
-
+    ###
+    def auto_resize_columns(self):
+        """Автоматическая настройка ширины столбцов в журнале"""
+        try:
+            columns = self.log_tree['columns']
+            for i, col in enumerate(columns):
+                max_width = tk.font.Font().measure(col.title())
+                for item in self.log_tree.get_children():
+                    cell_value = self.log_tree.set(item, col)
+                    cell_width = tk.font.Font().measure(str(cell_value))
+                    if cell_width > max_width:
+                        max_width = cell_width
+                
+                # Добавляем отступ и устанавливаем ширину с сохранением выравнивания
+                new_width = min(max_width + 20, 300)
+                # Сохраняем текущее выравнивание
+                if i >= 0 and i <= 4:  # Столбцы 1-5 (ID, Время, Загрузка, Отдача, Пинг)
+                    self.log_tree.column(col, width=new_width, anchor=tk.CENTER)
+                else:  # Столбец Сервер
+                    self.log_tree.column(col, width=new_width, anchor=tk.W)
+        except Exception as e:
+            self.logger.error(f"Ошибка автонастройки столбцов: {e}")            
+            
+    ###
 
     def update_graph(self):
         """Обновление графиков"""
