@@ -72,6 +72,7 @@ secrets.py
 *.env
 secrets.*
 config_secret.*
+src/.env
 
 # === Файлы блокировки программы ===
 *.lock
@@ -103,5 +104,23 @@ src/vt_monitor.lock
 # Windows special files
 nul
 NUL
+
+# Базы данных
+*.db
+
+# Логи
+*.log
+
+# Иконки
+*.ico
+*.png
+
+# Временная папка
+temp/
+
+# Файлы программы Windows
+*.exe
+
+
 
 
