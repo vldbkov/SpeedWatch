@@ -22,7 +22,7 @@ class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
         self.root.title("Internet Speed Monitor")
-        self.root.geometry("1000x700")
+        self.root.geometry("1050x750")
         
         # Установка иконки
         try:
@@ -36,8 +36,9 @@ class InternetSpeedMonitor:
         self.setup_logging()
         self.setup_database()
         
-        # Создание меню для трея
-        self.create_tray_icon()
+        # Управление консолью
+        self.console_visible = False  # Начинаем со скрытой консоли
+        self.setup_console()
         
         # Создание интерфейса
         self.create_widgets()
@@ -46,7 +47,11 @@ class InternetSpeedMonitor:
         self.load_settings()
         
         # Защита от дублирования запуска
-        self.check_already_running()
+        if self.check_already_running():
+            return
+        
+        # Создание меню для трея
+        self.create_tray_icon()
         
         # При закрытии окна - сворачиваем в трей
         self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
@@ -54,6 +59,22 @@ class InternetSpeedMonitor:
         # Запуск мониторинга если настроен автостарт
         if self.auto_start_var.get():
             self.start_monitoring()
+        
+        # Сразу сворачиваем в трей без показа окна
+        self.minimize_to_tray()
+        
+        # Скрываем консоль после создания трея
+        self.hide_console_on_start()
+        
+        # Запускаем главный цикл Tkinter
+        self.root.after(100, self.check_tray_icon)
+
+
+    def check_tray_icon(self):
+        """Проверка что иконка трея запущена"""
+        if not hasattr(self, 'tray_thread') or not self.tray_thread.is_alive():
+            self.logger.warning("Иконка трея не запущена, перезапускаем...")
+            self.create_tray_icon()
 
 
     def setup_logging(self):
@@ -92,6 +113,115 @@ class InternetSpeedMonitor:
         conn.commit()
         conn.close()
 
+
+    def setup_console(self):
+        """Настройка консоли Windows"""
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            # Получаем хендл консоли
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            self.hwnd = kernel32.GetConsoleWindow()
+            
+            if self.hwnd:
+                # Убираем ТОЛЬКО кнопку закрытия (крестик), оставляем свернуть и развернуть
+                user32 = ctypes.WinDLL('user32', use_last_error=True)
+                GWL_STYLE = -16
+                
+                # Получаем текущие стили
+                style = user32.GetWindowLongW(self.hwnd, GWL_STYLE)
+                
+                # Убираем только системное меню (крестик), оставляем остальные кнопки
+                style = style & ~0x00080000  # Убираем WS_SYSMENU
+                style = style | 0x00020000   # Добавляем WS_MINIMIZEBOX (если не было)
+                style = style | 0x00010000   # Добавляем WS_MAXIMIZEBOX (если не было)
+                
+                user32.SetWindowLongW(self.hwnd, GWL_STYLE, style)
+                
+                # Обновляем окно
+                user32.SetWindowPos(self.hwnd, 0, 0, 0, 0, 0, 
+                                  0x0001 | 0x0002 | 0x0020)  # SWP_NOSIZE | SWP_NOMOVE | SWP_FRAMECHANGED
+                
+                self.logger.info("Кнопка закрытия консоли отключена, кнопки свернуть/развернуть активны")
+        except Exception as e:
+            self.logger.error(f"Ошибка настройки консоли: {e}")
+
+
+    def hide_console_on_start(self):
+        """Скрыть консоль при старте"""
+        try:
+            import ctypes
+            user32 = ctypes.WinDLL('user32', use_last_error=True)
+            
+            if hasattr(self, 'hwnd') and self.hwnd:
+                user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
+                self.console_visible = False
+        except Exception as e:
+            self.logger.error(f"Ошибка скрытия консоли при старте: {e}")
+
+
+    def toggle_console(self, icon, item):
+        """Переключение видимости консоли"""
+        try:
+            import ctypes
+            user32 = ctypes.WinDLL('user32', use_last_error=True)
+            
+            if hasattr(self, 'hwnd') and self.hwnd:
+                if self.console_visible:
+                    # Скрыть консоль
+                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
+                    self.console_visible = False
+                else:
+                    # Показать консоль
+                    user32.ShowWindow(self.hwnd, 1)  # SW_SHOW = 1
+                    self.console_visible = True
+                
+                # Обновляем меню с новым текстом
+                self.update_tray_menu()
+                    
+        except Exception as e:
+            self.logger.error(f"Ошибка переключения консоли: {e}")
+    ###
+    def update_tray_menu(self):
+        """Обновление меню в трее"""
+        try:
+            from functools import partial
+            
+            # Определяем текст для консоли
+            console_text = "Скрыть консоль" if self.console_visible else "Показать консоль"
+            
+            # Определяем текст для окна
+            window_text = "Окно программы скрыть" if self.root.winfo_viewable() else "Окно программы показать"
+            
+            # Создаем новое меню
+            new_menu = pystray.Menu(
+                pystray.MenuItem(
+                    window_text, 
+                    lambda: self.toggle_window_visibility()
+                ),
+                pystray.MenuItem(
+                    console_text, 
+                    lambda: self.toggle_console(self.tray_icon, None)
+                ),
+                pystray.MenuItem(
+                    "Тест сейчас", 
+                    lambda: self.run_speed_test()
+                ),
+                pystray.MenuItem(
+                    "Выход", 
+                    lambda: self.quit_app()
+                )
+            )
+            
+            # Обновляем меню
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.menu = new_menu
+                self.tray_icon.update_menu()
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка обновления меню трея: {e}")            
+    ###
 
     def create_icon(self):
         """Создание простой иконки если файла нет"""
@@ -309,7 +439,7 @@ class InternetSpeedMonitor:
         
         ttk.Label(info_frame, text="Internet Speed Monitor v1.0").pack()
         ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения").pack()
-        ttk.Label(info_frame, text="© 2026").pack()
+        ttk.Label(info_frame, text="© 2024").pack()
 
 
     def create_tray_icon(self):
@@ -320,20 +450,32 @@ class InternetSpeedMonitor:
             draw = ImageDraw.Draw(image)
             draw.text((20, 25), "SPD", fill='white')
             
-            # Создаем меню для иконки в трее
-            menu = (
-                pystray.MenuItem("Показать", self.show_window),
-                pystray.MenuItem("Тест сейчас", self.run_speed_test),
-                pystray.MenuItem("Выход", self.quit_app)
+            self.tray_icon = pystray.Icon(
+                "internet_speed_monitor", 
+                image, 
+                "Internet Speed Monitor"
             )
             
-            self.tray_icon = pystray.Icon("internet_speed_monitor", image, "Internet Speed Monitor", menu)
+            # Создаем начальное меню
+            self.update_tray_menu()
             
             # Запускаем иконку в трее в отдельном потоке
             self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
             self.tray_thread.start()
+            self.logger.info("Иконка трея запущена")
         except Exception as e:
             self.logger.error(f"Ошибка создания иконки трея: {e}")
+
+
+    def toggle_window_visibility(self):
+        """Переключение видимости окна программы"""
+        if self.root.state() == 'withdrawn' or not self.root.winfo_viewable():
+            self.show_window()
+        else:
+            self.minimize_to_tray()
+        
+        # Обновляем меню
+        self.update_tray_menu()
 
 
     def check_already_running(self):
@@ -518,7 +660,7 @@ class InternetSpeedMonitor:
 
 
     def _update_ui_with_results(self, download, upload, ping, server):
-        """Обновление интерфейса с результатами"""
+        """Обновление интерфейс с результатами"""
         self.download_var.set(f"{download:.2f} Mbps")
         self.upload_var.set(f"{upload:.2f} Mbps")
         self.ping_var.set(f"{ping:.2f} ms")
@@ -528,7 +670,7 @@ class InternetSpeedMonitor:
 
 
     def _update_ui_with_error(self, error_msg):
-        """Обновление интерфейса при ошибке"""
+        """Обновление интерфейс при ошибке"""
         self.download_var.set("Ошибка")
         self.upload_var.set("Ошибка")
         self.ping_var.set("Ошибка")
@@ -542,13 +684,12 @@ class InternetSpeedMonitor:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            ###            
+            
             cursor.execute('''
                 INSERT INTO speed_measurements 
                 (timestamp, download_speed, upload_speed, ping, server) 
                 VALUES (?, ?, ?, ?, ?)
             ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), download, upload, ping, server))
-            ###
             
             conn.commit()
             conn.close()
@@ -724,14 +865,14 @@ class InternetSpeedMonitor:
             download_speeds = [row[1] for row in data]
             upload_speeds = [row[2] for row in data]
             pings = [row[3] for row in data]
-            ###            
+            
             # Преобразуем строки времени в datetime
             if isinstance(timestamps[0], str):
                 try:
                     timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S.%f') for ts in timestamps]
                 except ValueError:
                     timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
-            ###            
+            
             # Создаем графики
             ax1 = self.fig.add_subplot(211)
             ax2 = self.fig.add_subplot(212)
@@ -847,6 +988,13 @@ class InternetSpeedMonitor:
                 messagebox.showerror("Ошибка", f"Не удалось очистить журнал: {e}")
 
 
+    def show_window(self):
+        """Показать окно из трея"""
+        self.root.deiconify()
+        self.root.attributes('-topmost', True)
+        self.root.after_idle(lambda: self.root.attributes('-topmost', False))
+
+
     def minimize_to_tray(self):
         """Сворачивание в системный трей"""
         if self.minimize_to_tray_var.get():
@@ -857,20 +1005,14 @@ class InternetSpeedMonitor:
             self.quit_app()
 
 
-    def show_window(self):
-        """Показать окно из трея"""
-        self.root.deiconify()
-        self.root.attributes('-topmost', True)
-        self.root.after_idle(lambda: self.root.attributes('-topmost', False))
-
-
     def quit_app(self):
         """Завершение работы приложения"""
         self.running = False
         
         # Закрываем иконку в трее
         try:
-            self.tray_icon.stop()
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.stop()
         except:
             pass
         
