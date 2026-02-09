@@ -126,6 +126,10 @@ test_*.py
 *_test.py
 setup.py
 
+# Файл без расширения с именем 'py'
+/py
+src/py
+
 
 
 
