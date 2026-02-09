@@ -1,0 +1,107 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+.vscode/
+
+# === Системные файлы Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller (Временные файлы упаковки)
+build/
+dist/
+
+# Временные скрипты сборки
+zip_me.py
+
+# === Временные файлы загрузок ===
+*.crdownload
+*.tmp
+*.part
+*.download
+*.!ut
+
+
+# Игнорировать все файлы, начинающиеся на "temp_" или "build_"
+temp_*.py
+build_*.py
+.svg
+
+# Игнорировать папку с личными данными и логами
+data/
+quarantine/
+
+# Данные проекта
+data/
+temp/
+*.log
+*.csv
+*.json
+*.xlsx
+
+
+# === Конфигурационные файлы с секретами ===
+secrets.py
+.env
+.env.local
+.env.*.local
+.env.*
+*.env
+secrets.*
+config_secret.*
+
+# === Файлы блокировки программы ===
+*.lock
+vt_monitor.lock
+
+# Системные
+.DS_Store
+Thumbs.db
+
+
+# Релизные заметки (хранятся на GitHub Releases)
+docs/releases/
+.github/releases/
+
+# Локальные копии релизной информации
+release_notes_*.md
+draft_releases/
+
+# === IDE и редакторы ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.dbsrc/logo.png
+src/vt_monitor.lock
+
+# Windows special files
+nul
+NUL
+
+
