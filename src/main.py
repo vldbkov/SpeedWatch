@@ -52,7 +52,9 @@ class InternetSpeedMonitor:
         ##      
         
         # Загрузка настроек
+        self.is_first_load = True  # Флаг первого запуска
         self.load_settings()
+        self.is_first_load = False  # Сбрасываем после загрузки
         
         # Защита от дублирования запуска
         if self.check_already_running():
@@ -523,8 +525,6 @@ class InternetSpeedMonitor:
         # Кнопки сохранения настроек
         ttk.Button(settings_frame, text="Сохранить настройки", 
                   command=self.save_settings).grid(row=3, column=0, pady=20)
-        ttk.Button(settings_frame, text="Восстановить по умолчанию", 
-                  command=self.reset_settings).grid(row=3, column=1, pady=20)
         
         # Информация о программе
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
@@ -532,7 +532,7 @@ class InternetSpeedMonitor:
         
         ttk.Label(info_frame, text="Internet Speed Monitor v1.0").pack()
         ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения").pack()
-        ttk.Label(info_frame, text="© 2024").pack()
+        ttk.Label(info_frame, text="© 2026").pack()
 
 
     def create_tray_icon(self):
@@ -611,9 +611,14 @@ class InternetSpeedMonitor:
         except Error as e:
             self.logger.error(f"Ошибка загрузки настроек: {e}")
 
-
-    def save_settings(self):
+    ###
+    def save_settings(self, restart=True, show_message=True):
         """Сохранение настроек в БД"""
+        # Защита от повторного вызова
+        if hasattr(self, '_saving_settings') and self._saving_settings:
+            return
+        self._saving_settings = True
+        
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -636,20 +641,26 @@ class InternetSpeedMonitor:
             # Обновляем автозапуск в реестре
             self.update_autostart()
             
-            messagebox.showinfo("Успех", "Настройки сохранены!")
-            self.logger.info("Настройки сохранены")
+            if restart and show_message:
+                messagebox.showinfo(
+                    "Настройки сохранены", 
+                    "Настройки успешно сохранены!\n\n"
+                    "Программа будет перезапущена для применения изменений."
+                )
+                self.logger.info("Настройки сохранены, выполняю перезапуск")
+                
+                # Откладываем перезапуск, чтобы окно сообщения закрылось
+                self.root.after(100, self.restart_app)
+            elif show_message:
+                messagebox.showinfo("Настройки сохранены", "Настройки успешно сохранены!")
+                self.logger.info("Настройки сохранены")
+            
         except Error as e:
             self.logger.error(f"Ошибка сохранения настроек: {e}")
             messagebox.showerror("Ошибка", f"Не удалось сохранить настройки: {e}")
-
-
-    def reset_settings(self):
-        """Сброс настроек к значениям по умолчанию"""
-        self.interval_var.set(60)
-        self.auto_start_var.set(False)
-        self.minimize_to_tray_var.set(True)
-        self.save_settings()
-    ###
+        finally:
+            self._saving_settings = False
+            
     def reset_date_filter(self):
         """Сброс фильтра по дате"""
         today = datetime.now()
@@ -1184,7 +1195,7 @@ class InternetSpeedMonitor:
             self.status_var.set("Свернуто в трей")
             self.logger.info("Приложение свернуто в трей")
         else:
-            self.quit_app()
+            self.quit_app()  # Только если выбран выход
 
 
     def quit_app(self):
@@ -1198,13 +1209,30 @@ class InternetSpeedMonitor:
         except:
             pass
         
-        # Сохраняем настройки
-        self.save_settings()
-        
         # Закрываем приложение
         self.root.quit()
         self.logger.info("Приложение завершено")
-
+    ###
+    def restart_app(self):
+        """Перезапуск приложения"""
+        self.logger.info("Перезапуск программы...")        
+       
+        # Закрываем иконку в трее
+        try:
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.stop()
+        except:
+            pass
+        
+        # Закрываем основное окно
+        self.root.quit()
+        
+        # Перезапускаем программу
+        python = sys.executable
+        script = os.path.abspath(sys.argv[0])
+        subprocess.Popen([python, script])
+        sys.exit()        
+    ###
 
 def main():
     root = tk.Tk()
