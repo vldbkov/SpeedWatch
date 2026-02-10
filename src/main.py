@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import logging
+from tkcalendar import Calendar, DateEntry
 
 
 class InternetSpeedMonitor:
@@ -403,12 +404,42 @@ class InternetSpeedMonitor:
         ttk.Button(log_control_frame, text="Экспорт в CSV", command=self.export_log).pack(side='left', padx=5)
         ttk.Button(log_control_frame, text="Очистить журнал", command=self.clear_log).pack(side='left', padx=5)
         
-        # Поле фильтра
-        ttk.Label(log_control_frame, text="Фильтр:").pack(side='left', padx=(20, 5))
-        self.filter_var = tk.StringVar()
-        self.filter_entry = ttk.Entry(log_control_frame, textvariable=self.filter_var, width=30)
-        self.filter_entry.pack(side='left')
+        # Поля выбора периода с календарем
+        ttk.Label(log_control_frame, text="Период с:").pack(side='left', padx=(20, 5))
+        
+        # Календарь для начальной даты
+        self.date_from_var = tk.StringVar()
+        self.date_from_entry = DateEntry(
+            log_control_frame,
+            textvariable=self.date_from_var,
+            width=9,
+            background='darkblue',
+            foreground='white',
+            borderwidth=2,
+            date_pattern='dd.mm.yyyy',
+            locale='ru_RU'
+        )
+        self.date_from_entry.pack(side='left')
+        
+        ttk.Label(log_control_frame, text="по:").pack(side='left', padx=(5, 5))
+        
+        # Календарь для конечной даты
+        self.date_to_var = tk.StringVar()
+        self.date_to_entry = DateEntry(
+            log_control_frame,
+            textvariable=self.date_to_var,
+            width=9,
+            background='darkblue',
+            foreground='white',
+            borderwidth=2,
+            date_pattern='dd.mm.yyyy',
+            locale='ru_RU'
+        )
+        self.date_to_entry.pack(side='left')
+        
+        # Кнопки управления
         ttk.Button(log_control_frame, text="Применить", command=self.update_log).pack(side='left', padx=5)
+        ttk.Button(log_control_frame, text="Сбросить", command=self.reset_date_filter).pack(side='left', padx=5)
         
         # Таблица журнала
         columns = ('ID', 'Время', 'Загрузка (Mbps)', 'Отдача (Mbps)', 'Пинг (ms)', 'Сервер')
@@ -605,7 +636,14 @@ class InternetSpeedMonitor:
         self.auto_start_var.set(False)
         self.minimize_to_tray_var.set(True)
         self.save_settings()
-
+    ###
+    def reset_date_filter(self):
+        """Сброс фильтра по дате"""
+        today = datetime.now()
+        self.date_from_entry.set_date(today)
+        self.date_to_entry.set_date(today)
+        self.update_log()        
+    ###    
 
     def update_autostart(self):
         """Добавление/удаление из автозапуска Windows"""
@@ -867,12 +905,15 @@ class InternetSpeedMonitor:
             '''
             params = []
             
-            # Применяем фильтр если есть
-            filter_text = self.filter_var.get().strip()
-            if filter_text:
-                query += " AND (server LIKE ? OR timestamp LIKE ?)"
-                search_pattern = f"%{filter_text}%"
-                params.extend([search_pattern, search_pattern])
+            # Применяем фильтр по датам
+            try:
+                date_from = self.date_from_entry.get_date()  # Возвращает datetime.date
+                date_to = self.date_to_entry.get_date()
+                
+                query += " AND date(timestamp) BETWEEN ? AND ?"
+                params.extend([date_from.strftime('%Y-%m-%d'), date_to.strftime('%Y-%m-%d')])
+            except Exception as e:
+                self.logger.error(f"Ошибка обработки дат фильтра: {e}")
             
             query += " ORDER BY timestamp DESC LIMIT 1000"
             
