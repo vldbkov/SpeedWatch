@@ -23,7 +23,8 @@ class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
         self.root.title("Internet Speed Monitor")
-        self.root.geometry("700x500+20+20")
+        self.root.geometry("700x500")
+        self.center_window()
         
         # Установка иконки
         try:
@@ -75,7 +76,19 @@ class InternetSpeedMonitor:
         
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
-
+        
+    def center_window(self):
+        """Центрирование окна на экране"""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        
+        self.root.geometry(f'{width}x{height}+{x}+{y}')     
 
     def check_tray_icon(self):
         """Проверка что иконка трея запущена"""
