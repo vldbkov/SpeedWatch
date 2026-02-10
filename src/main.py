@@ -238,7 +238,7 @@ class InternetSpeedMonitor:
         except:
             pass
 
-
+    ###
     def create_widgets(self):
         """Создание виджетов интерфейса"""
         # Создаем Notebook (вкладки)
@@ -261,12 +261,7 @@ class InternetSpeedMonitor:
         self.settings_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text='Настройки')
         
-        # Статус бар
-        self.status_var = tk.StringVar()
-        self.status_var.set("Готов к работе")
-        self.status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
+      
         # Заполняем вкладку мониторинга
         self.setup_monitor_tab()
         
@@ -278,8 +273,8 @@ class InternetSpeedMonitor:
         
         # Заполняем вкладку настроек
         self.setup_settings_tab()
-
-
+    ###
+    ###
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
         # Фрейм с текущими показателями
@@ -324,7 +319,13 @@ class InternetSpeedMonitor:
         ttk.Label(control_frame, text="Следующий тест через:").pack(side='left', padx=20)
         self.next_test_var = tk.StringVar(value="--:--:--")
         ttk.Label(control_frame, textvariable=self.next_test_var, font=('Arial', 10, 'bold')).pack(side='left')
-
+        
+        # Статус бар ПОД кнопками управления
+        self.status_var = tk.StringVar()
+        self.status_var.set("Готов к работе")
+        status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=5)
+        status_bar.pack(fill='x', padx=10, pady=(0, 10))
+    ###
 
     def setup_graph_tab(self):
         """Настройка вкладки с графиками"""
@@ -604,11 +605,14 @@ class InternetSpeedMonitor:
         test_thread = threading.Thread(target=self._perform_speed_test, daemon=True)
         test_thread.start()
 
-
+    ###
     def _perform_speed_test(self):
         """Выполнение теста скорости через OpenSpeedTest"""
         try:
+            # Обновляем статус на каждом этапе
+            self.root.after(0, lambda: self.status_var.set("Запуск теста скорости через OpenSpeedTest..."))
             self.logger.info("Запуск теста скорости через OpenSpeedTest...")
+            time.sleep(0.5)  # Небольшая задержка для отображения
             
             # Импортируем из нашего скрипта
             import openspeedtest as ost
@@ -631,6 +635,7 @@ class InternetSpeedMonitor:
             config = {"api_key": api_key}
             
             # Получаем серверы
+            self.root.after(0, lambda: self.status_var.set("Получение списка серверов..."))
             self.logger.info("Получение списка серверов...")
             servers = ost.fetch_servers_from_api(config)
             
@@ -638,6 +643,7 @@ class InternetSpeedMonitor:
                 raise Exception("Не удалось получить список серверов")
             
             # Находим лучший сервер
+            self.root.after(0, lambda: self.status_var.set("Поиск лучшего сервера..."))
             self.logger.info("Поиск лучшего сервера...")
             server = ost.find_best_server(servers)
             server_name = server['name']
@@ -646,27 +652,31 @@ class InternetSpeedMonitor:
             ping = server.get('ping', 0)
             jitter = server.get('jitter', 0)
             
-            # Тест скачивания (уменьшаем длительность для быстрого теста)
+            # Тест скачивания
+            self.root.after(0, lambda: self.status_var.set("Тест скачивания..."))
             self.logger.info("Тест скачивания...")
             download_speed = ost.download_test(server, duration=5, threads=4)
             
             # Тест загрузки
+            self.root.after(0, lambda: self.status_var.set("Тест загрузки..."))
             self.logger.info("Тест загрузки...")
             upload_speed = ost.upload_test(server, duration=5, threads=4)
             
             # Сохраняем результаты
             self.save_test_results(download_speed, upload_speed, ping, server_name)
             
-            # Обновляем интерфейс
-            self.root.after(0, self._update_ui_with_results, 
-                          download_speed, upload_speed, ping, server_name)
+            # Обновляем интерфейс с завершающим сообщением
+            self.root.after(0, lambda: self._update_ui_with_results_and_status(
+                download_speed, upload_speed, ping, server_name,
+                f"Тест завершен"
+            ))
             
             self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
                            f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms")
             
         except Exception as e:
             self.logger.error(f"Ошибка теста скорости: {e}")
-            self.root.after(0, self._update_ui_with_error, str(e))
+            self.root.after(0, lambda: self._update_ui_with_error(str(e)))
 
     ###
     def _update_ui_with_results(self, download, upload, ping, server):
@@ -679,7 +689,16 @@ class InternetSpeedMonitor:
         self.status_var.set("Тест завершен")
         self.test_button.config(state='normal')
     ###
+    def _update_ui_with_results_and_status(self, download, upload, ping, server, status_message):
+        """Обновление интерфейс с результатами и кастомным статусом"""
+        self.download_var.set(f"{download:.2f} Mbps")
+        self.upload_var.set(f"{upload:.2f} Mbps")
+        self.ping_var.set(f"{ping:.2f} ms")
+        self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
+        self.status_var.set(status_message)
+        self.test_button.config(state='normal')
 
+    ###
     def _update_ui_with_error(self, error_msg):
         """Обновление интерфейс при ошибке"""
         self.download_var.set("Ошибка")
