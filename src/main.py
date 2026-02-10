@@ -63,8 +63,8 @@ class InternetSpeedMonitor:
         # Создание меню для трея
         self.create_tray_icon()
         
-        # При закрытии окна - сворачиваем в трей
-        self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
+        # При закрытии окна - сворачиваем в трей и обновляем меню трея
+        self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)
         
         # Запуск мониторинга если настроен автостарт
         if self.auto_start_var.get():
@@ -72,6 +72,11 @@ class InternetSpeedMonitor:
         
         # Сразу сворачиваем в трей без показа окна
         self.minimize_to_tray()
+        
+        ###
+        # Флаг начального состояния (старт в трее)
+        self.started_in_tray = True        
+        ###
         
         # Скрываем консоль после создания трея
         self.hide_console_on_start()
@@ -234,6 +239,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка переключения консоли: {e}")
     ###
+
     def update_tray_menu(self):
         """Обновление меню в трее"""
         try:
@@ -243,7 +249,17 @@ class InternetSpeedMonitor:
             console_text = "Скрыть консоль" if self.console_visible else "Показать консоль"
             
             # Определяем текст для окна
-            window_text = "Окно программы скрыть" if self.root.winfo_viewable() else "Окно программы показать"
+            # Используем комбинацию проверок для точного определения
+            is_window_visible = (
+                self.root.winfo_viewable() and 
+                self.root.state() != 'withdrawn' and
+                not self.root.winfo_ismapped() == 0
+            )
+            
+            if is_window_visible:
+                window_text = "Окно программы скрыть"
+            else:
+                window_text = "Окно программы показать"
             
             # Создаем новое меню
             new_menu = pystray.Menu(
@@ -271,8 +287,8 @@ class InternetSpeedMonitor:
                 self.tray_icon.update_menu()
                 
         except Exception as e:
-            self.logger.error(f"Ошибка обновления меню трея: {e}")            
-    ###
+            self.logger.error(f"Ошибка обновления меню трея: {e}")
+            
 
     def create_icon(self):
         """Создание простой иконки если файла нет"""
@@ -563,13 +579,12 @@ class InternetSpeedMonitor:
     def toggle_window_visibility(self):
         """Переключение видимости окна программы"""
         if self.root.state() == 'withdrawn' or not self.root.winfo_viewable():
-            self.show_window()
+            self.show_window()  # Будет записано "Приложение открыто"
         else:
-            self.minimize_to_tray()
+            self.minimize_to_tray()  # Будет записано "Приложение свернуто в трей"
         
         # Обновляем меню
         self.update_tray_menu()
-
 
     def check_already_running(self):
         """Проверка, не запущено ли уже приложение"""
@@ -1186,6 +1201,7 @@ class InternetSpeedMonitor:
         self.root.deiconify()
         self.root.attributes('-topmost', True)
         self.root.after_idle(lambda: self.root.attributes('-topmost', False))
+        self.logger.info("Приложение открыто")  # ДОБАВИТЬ эту строку
 
 
     def minimize_to_tray(self):
@@ -1193,10 +1209,16 @@ class InternetSpeedMonitor:
         if self.minimize_to_tray_var.get():
             self.root.withdraw()
             self.status_var.set("Свернуто в трей")
-            self.logger.info("Приложение свернуто в трей")
+            self.logger.info("Приложение свернуто в трей")  # Уже есть
         else:
-            self.quit_app()  # Только если выбран выход
+            self.quit_app()
 
+    def handle_window_close(self):
+        """Обработка закрытия окна пользователем (крестик)"""
+        # Сворачиваем в трей (будет записано "Приложение свернуто в трей")
+        self.minimize_to_tray()
+        # Обновляем меню трея, чтобы отобразить правильный статус
+        self.update_tray_menu()          
 
     def quit_app(self):
         """Завершение работы приложения"""
