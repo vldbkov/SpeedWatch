@@ -595,11 +595,14 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
 
-
+    ###
     def run_speed_test(self):
         """Запуск теста скорости интернета"""
         self.status_var.set("Выполняется тест скорости...")
         self.test_button.config(state='disabled')
+        
+        # Сбрасываем таймер отсчета
+        self.next_test_var.set("--:--:--")
         
         # Запускаем тест в отдельном потоке
         test_thread = threading.Thread(target=self._perform_speed_test, daemon=True)
@@ -782,7 +785,7 @@ class InternetSpeedMonitor:
                 self.logger.error(f"Ошибка в цикле мониторинга: {e}")
                 time.sleep(60)
 
-
+    ##
     def update_next_test_timer(self):
         """Обновление таймера до следующего теста"""
         if not self.running:
@@ -794,11 +797,15 @@ class InternetSpeedMonitor:
             if time_left.total_seconds() > 0:
                 hours, remainder = divmod(int(time_left.total_seconds()), 3600)
                 minutes, seconds = divmod(remainder, 60)
-                self.next_test_var.set(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+                timer_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                self.next_test_var.set(timer_text)
+                
+                # Добавляем статус с отсчетом времени
+                self.status_var.set(f"Отсчет времени до следующей проверки")
             else:
                 # Время пришло, обновляем следующее время
                 self.next_test_time = now + timedelta(minutes=self.interval_var.get())
-
+    ###
 
     def update_log(self):
         """Обновление журнала измерений"""
