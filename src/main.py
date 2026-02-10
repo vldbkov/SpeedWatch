@@ -899,7 +899,6 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка автонастройки столбцов: {e}")           
           
     ###
-
     def update_graph(self):
         """Обновление графиков"""
         try:
@@ -955,23 +954,34 @@ class InternetSpeedMonitor:
             ax1 = self.fig.add_subplot(211)
             ax2 = self.fig.add_subplot(212)
             
+            # Настраиваем шрифты для подписей осей 
+            label_fontsize = 8  # Размер шрифта по умолчанию около 12, 
+            title_fontsize = 11
+            
             # График скорости
             ax1.plot(timestamps, download_speeds, 'b-', label='Загрузка', linewidth=2)
             ax1.plot(timestamps, upload_speeds, 'r-', label='Отдача', linewidth=2)
-            ax1.set_title('Скорость интернета')
-            ax1.set_ylabel('Скорость (Mbps)')
-            ax1.legend()
+            ax1.set_title('Скорость интернета', fontsize=title_fontsize)
+            ax1.set_ylabel('Скорость (Mbps)', fontsize=label_fontsize)
+            ax1.legend(fontsize=label_fontsize)
             ax1.grid(True, alpha=0.3)
-            ax1.tick_params(axis='x', rotation=45)
+            ax1.tick_params(axis='both', labelsize=label_fontsize)
+            
+            # Форматируем ось X для дат в формате дд.мм.гг чч:мм
+            import matplotlib.dates as mdates
+            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y %H:%M'))
             
             # График пинга
             ax2.plot(timestamps, pings, 'g-', label='Пинг', linewidth=2)
-            ax2.set_title('Пинг')
-            ax2.set_xlabel('Время')
-            ax2.set_ylabel('Пинг (ms)')
-            ax2.legend()
+            ax2.set_title('Пинг', fontsize=title_fontsize)
+            ax2.set_xlabel('', fontsize=label_fontsize)
+            ax2.set_ylabel('Пинг (ms)', fontsize=label_fontsize)
+            ax2.legend(fontsize=label_fontsize)
             ax2.grid(True, alpha=0.3)
-            ax2.tick_params(axis='x', rotation=45)
+            ax2.tick_params(axis='both', labelsize=label_fontsize)
+            
+            # Форматируем ось X для дат в формате дд.мм.гг чч:мм
+            ax2.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y %H:%M'))
             
             # Автоматическое форматирование дат
             self.fig.autofmt_xdate()
@@ -987,7 +997,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка обновления графика: {e}")
             self.status_var.set(f"Ошибка обновления графика: {e}")
-
+    ###
 
     def export_graph(self):
         """Экспорт графика в PNG"""
