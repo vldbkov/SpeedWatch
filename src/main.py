@@ -22,17 +22,17 @@ class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
         self.root.title("Internet Speed Monitor")
-        self.root.geometry("1050x750")
+        self.root.geometry("700x500+20+20")
         
         # Установка иконки
         try:
-            self.root.iconbitmap('icon.ico')
+            self.root.iconbitmap('src/icon.ico')
         except:
             self.create_icon()
         
         self.running = False
         self.monitor_thread = None
-        self.db_path = "internet_speed.db"
+        self.db_path = "../data/internet_speed.db"
         self.setup_logging()
         self.setup_database()
         
@@ -83,7 +83,7 @@ class InternetSpeedMonitor:
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('speed_monitor.log'),
+                logging.FileHandler('../data/speed_monitor.log'),
                 logging.StreamHandler()
             ]
         )
@@ -229,12 +229,12 @@ class InternetSpeedMonitor:
             image = Image.new('RGB', (64, 64), color='blue')
             draw = ImageDraw.Draw(image)
             draw.text((20, 25), "SPD", fill='white')
-            image.save('icon.png')
+            image.save('src/icon.png')
             
             # Конвертируем PNG в ICO
-            img = Image.open('icon.png')
-            img.save('icon.ico', format='ICO')
-            self.root.iconbitmap('icon.ico')
+            img = Image.open('src/icon.png')
+            img.save('src/icon.ico', format='ICO')
+            self.root.iconbitmap('src/icon.ico')
         except:
             pass
 
@@ -616,7 +616,7 @@ class InternetSpeedMonitor:
             # Читаем API ключ из .env
             api_key = None
             try:
-                with open('.env', 'r') as f:
+                with open('.env', 'r', encoding='utf-8') as f:
                     for line in f:
                         if line.startswith("OPENSPEEDTEST_API_KEY="):
                             api_key = line.strip().split("=", 1)[1]
