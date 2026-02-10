@@ -43,6 +43,12 @@ class InternetSpeedMonitor:
         # Создание интерфейса
         self.create_widgets()
         
+        ##
+        # Загружаем время последнего измерения
+        last_time = self.get_last_measurement_time()
+        self.last_check_var.set(last_time)        
+        ##      
+        
         # Загрузка настроек
         self.load_settings()
         
@@ -112,7 +118,36 @@ class InternetSpeedMonitor:
         ''')
         conn.commit()
         conn.close()
-
+    ##
+    def get_last_measurement_time(self):
+        """Получение времени последнего измерения из БД"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT timestamp FROM speed_measurements 
+                ORDER BY timestamp DESC LIMIT 1
+            ''')
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                timestamp = result[0]
+                # Форматируем дату из "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
+                try:
+                    if timestamp and isinstance(timestamp, str):
+                        dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                        return dt.strftime('%d.%m.%y %H:%M')
+                    else:
+                        return "Нет данных"
+                except:
+                    return "Нет данных"
+            else:
+                return "Нет данных"
+        except Exception as e:
+            self.logger.error(f"Ошибка получения времени последнего измерения: {e}")
+            return "Нет данных"        
+    ##
 
     def setup_console(self):
         """Настройка консоли Windows"""
@@ -729,6 +764,10 @@ class InternetSpeedMonitor:
             
             conn.commit()
             conn.close()
+            
+            # Обновляем время последнего измерения
+            current_time = datetime.now().strftime('%d.%m.%y %H:%M')
+            self.last_check_var.set(current_time)
             
             # Обновляем журнал и графики
             self.root.after(0, self.update_log)
