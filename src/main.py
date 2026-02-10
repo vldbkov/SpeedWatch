@@ -45,11 +45,14 @@ class InternetSpeedMonitor:
         # Создание интерфейса
         self.create_widgets()
         
-        ##
+        # Устанавливаем начальный статус
+        self.status_var.set("Ожидание команды")     
+        
+        
         # Загружаем время последнего измерения
         last_time = self.get_last_measurement_time()
         self.last_check_var.set(last_time)        
-        ##      
+             
         
         # Загрузка настроек
         self.is_first_load = True  # Флаг первого запуска
@@ -1201,14 +1204,15 @@ class InternetSpeedMonitor:
         self.root.deiconify()
         self.root.attributes('-topmost', True)
         self.root.after_idle(lambda: self.root.attributes('-topmost', False))
-        self.logger.info("Приложение открыто")  # ДОБАВИТЬ эту строку
+        self.logger.info("Приложение открыто")
+        self.status_var.set("Ожидание команды")
 
 
     def minimize_to_tray(self):
         """Сворачивание в системный трей"""
         if self.minimize_to_tray_var.get():
             self.root.withdraw()
-            self.status_var.set("Свернуто в трей")
+            self.status_var.set("Ожидание команды")
             self.logger.info("Приложение свернуто в трей")  # Уже есть
         else:
             self.quit_app()
