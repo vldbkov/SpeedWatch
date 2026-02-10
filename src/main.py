@@ -391,21 +391,24 @@ class InternetSpeedMonitor:
         hsb.pack(side='bottom', fill='x')
         
         self.log_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
-                                    yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+                                    yscrollcommand=vsb.set, xscrollcommand=hsb.set)  
         ###        
-        # Настройка колонок с автошириной и выравниванием по центру
+        # Настройка колонок - все фиксированной ширины, растяжение отключено
         for i, col in enumerate(columns):
             self.log_tree.heading(col, text=col)
-            # Столбцы с 1 по 5 (ID, Время, Загрузка, Отдача, Пинг) - выравнивание по центру
-            if i >= 0 and i <= 4:  # Столбцы с индексом 0-4 (ID, Время, Загрузка, Отдача, Пинг)
-                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=True)  # ДОБАВИТЬ stretch=True
-            else:  # Последний столбец (Сервер) - выравнивание по левому краю
-                self.log_tree.column(col, width=150, anchor=tk.W, stretch=True)  # ДОБАВИТЬ stretch=True
-        ###
-        # Автоматическое изменение ширины столбцов при изменении размера окна
-        for i, col in enumerate(columns):
-            self.log_tree.column(col, width=tk.font.Font().measure(col.title()) + 20)
-            
+            # Все столбцы имеют фиксированную ширину
+            if i == 0:  # ID
+                self.log_tree.column(col, width=50, anchor=tk.CENTER, stretch=False)
+            elif i == 1:  # Время
+                self.log_tree.column(col, width=90, anchor=tk.CENTER, stretch=False)
+            elif i == 2:  # Загрузка
+                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=False)
+            elif i == 3:  # Отдача
+                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=False)
+            elif i == 4:  # Пинг
+                self.log_tree.column(col, width=70, anchor=tk.CENTER, stretch=False)
+            else:  # Сервер
+                self.log_tree.column(col, width=235, anchor=tk.W, stretch=False)
         ###
         
         self.log_tree.pack(fill='both', expand=True)
@@ -862,9 +865,7 @@ class InternetSpeedMonitor:
                     row[5] or "N/A"
                 )
                 ###
-                self.log_tree.insert('', 'end', values=formatted_row)
-            # Автонастройка ширины столбцов после загрузки данных
-            self.auto_resize_columns()                
+                self.log_tree.insert('', 'end', values=formatted_row)            
             
             conn.close()
             
