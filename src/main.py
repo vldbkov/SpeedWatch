@@ -397,10 +397,10 @@ class InternetSpeedMonitor:
             self.log_tree.heading(col, text=col)
             # Столбцы с 1 по 5 (ID, Время, Загрузка, Отдача, Пинг) - выравнивание по центру
             if i >= 0 and i <= 4:  # Столбцы с индексом 0-4 (ID, Время, Загрузка, Отдача, Пинг)
-                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=tk.YES)
+                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=True)  # ДОБАВИТЬ stretch=True
             else:  # Последний столбец (Сервер) - выравнивание по левому краю
-                self.log_tree.column(col, width=150, anchor=tk.W, stretch=tk.YES)
-        
+                self.log_tree.column(col, width=150, anchor=tk.W, stretch=True)  # ДОБАВИТЬ stretch=True
+        ###
         # Автоматическое изменение ширины столбцов при изменении размера окна
         for i, col in enumerate(columns):
             self.log_tree.column(col, width=tk.font.Font().measure(col.title()) + 20)
@@ -812,14 +812,29 @@ class InternetSpeedMonitor:
             
             # Добавляем данные в таблицу
             for row in rows:
+                ###
+                # Форматируем дату из формата "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
+                timestamp = row[1]
+                if timestamp and isinstance(timestamp, str):
+                    try:
+                        # Парсим оригинальную дату
+                        dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                        # Форматируем в нужный формат
+                        formatted_timestamp = dt.strftime('%d.%m.%y %H:%M')
+                    except:
+                        formatted_timestamp = timestamp
+                else:
+                    formatted_timestamp = "N/A"
+
                 formatted_row = (
                     row[0],
-                    row[1],
+                    formatted_timestamp,  # НОВЫЙ ФОРМАТ ДАТЫ
                     f"{row[2]:.2f}" if row[2] else "N/A",
                     f"{row[3]:.2f}" if row[3] else "N/A",
                     f"{row[4]:.2f}" if row[4] else "N/A",
                     row[5] or "N/A"
                 )
+                ###
                 self.log_tree.insert('', 'end', values=formatted_row)
             # Автонастройка ширины столбцов после загрузки данных
             self.auto_resize_columns()                
@@ -847,14 +862,15 @@ class InternetSpeedMonitor:
                 
                 # Добавляем отступ и устанавливаем ширину с сохранением выравнивания
                 new_width = min(max_width + 20, 300)
-                # Сохраняем текущее выравнивание
+                
+                # Устанавливаем автоширину с возможностью растяжения
                 if i >= 0 and i <= 4:  # Столбцы 1-5 (ID, Время, Загрузка, Отдача, Пинг)
-                    self.log_tree.column(col, width=new_width, anchor=tk.CENTER)
-                else:  # Столбец Сервер
-                    self.log_tree.column(col, width=new_width, anchor=tk.W)
+                    self.log_tree.column(col, width=new_width, anchor=tk.CENTER, stretch=True)
+                else:  # Столец Сервер
+                    self.log_tree.column(col, width=new_width, anchor=tk.W, stretch=True)
         except Exception as e:
-            self.logger.error(f"Ошибка автонастройки столбцов: {e}")            
-            
+            self.logger.error(f"Ошибка автонастройки столбцов: {e}")           
+          
     ###
 
     def update_graph(self):
