@@ -668,16 +668,17 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка теста скорости: {e}")
             self.root.after(0, self._update_ui_with_error, str(e))
 
-
+    ###
     def _update_ui_with_results(self, download, upload, ping, server):
         """Обновление интерфейс с результатами"""
         self.download_var.set(f"{download:.2f} Mbps")
         self.upload_var.set(f"{upload:.2f} Mbps")
         self.ping_var.set(f"{ping:.2f} ms")
-        self.last_check_var.set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        # ИЗМЕНЕНО: формат даты с "YYYY-MM-DD HH:MM:SS" на "DD.MM.YY HH:MM"
+        self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
         self.status_var.set("Тест завершен")
         self.test_button.config(state='normal')
-
+    ###
 
     def _update_ui_with_error(self, error_msg):
         """Обновление интерфейс при ошибке"""
@@ -688,7 +689,7 @@ class InternetSpeedMonitor:
         self.test_button.config(state='normal')
         messagebox.showerror("Ошибка", f"Не удалось выполнить тест скорости: {error_msg}")
 
-
+    ###
     def save_test_results(self, download, upload, ping, server):
         """Сохранение результатов теста в БД"""
         try:
@@ -710,7 +711,7 @@ class InternetSpeedMonitor:
             
         except Error as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
-
+    ###
 
     def start_monitoring(self):
         """Запуск периодического мониторинга"""
