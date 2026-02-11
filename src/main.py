@@ -490,6 +490,30 @@ class InternetSpeedMonitor:
         ttk.Button(log_control_frame, text="Применить", command=self.update_log).pack(side='left', padx=5)
         ttk.Button(log_control_frame, text="Сбросить", command=self.reset_date_filter).pack(side='left', padx=5)
         
+        # Панель со средними значениями
+        avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=10)
+        avg_frame.pack(fill='x', padx=10, pady=5)
+        
+        # Контейнер для значений (две колонки)
+        values_frame = ttk.Frame(avg_frame)
+        values_frame.pack(fill='x')
+        
+        # Левая колонка - Загрузка
+        left_frame = ttk.Frame(values_frame)
+        left_frame.pack(side='left', fill='x', expand=True, padx=5)
+        
+        ttk.Label(left_frame, text="Загрузка:", font=('Arial', 10)).pack(side='left', padx=5)
+        self.avg_download_var = tk.StringVar(value="0 Mbps")
+        ttk.Label(left_frame, textvariable=self.avg_download_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        
+        # Правая колонка - Отдача
+        right_frame = ttk.Frame(values_frame)
+        right_frame.pack(side='left', fill='x', expand=True, padx=5)
+        
+        ttk.Label(right_frame, text="Отдача:", font=('Arial', 10)).pack(side='left', padx=5)
+        self.avg_upload_var = tk.StringVar(value="0 Mbps")
+        ttk.Label(right_frame, textvariable=self.avg_upload_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        
         # Таблица журнала
         columns = ('ID', 'Время', 'Загрузка (Mbps)', 'Отдача (Mbps)', 'Пинг (ms)', 'Сервер')
         
@@ -1048,6 +1072,28 @@ class InternetSpeedMonitor:
                 self.log_tree.insert('', 'end', values=formatted_row)            
             
             conn.close()
+            
+            # Рассчитываем средние значения
+            if rows:
+                # Фильтруем значения которые не "N/A"
+                download_speeds = [row[2] for row in rows if row[2]]
+                upload_speeds = [row[3] for row in rows if row[3]]
+                
+                # Рассчитываем средние
+                if download_speeds:
+                    avg_download = sum(download_speeds) / len(download_speeds)
+                    self.avg_download_var.set(f"{avg_download:.2f} Mbps")
+                else:
+                    self.avg_download_var.set("0 Mbps")
+                
+                if upload_speeds:
+                    avg_upload = sum(upload_speeds) / len(upload_speeds)
+                    self.avg_upload_var.set(f"{avg_upload:.2f} Mbps")
+                else:
+                    self.avg_upload_var.set("0 Mbps")
+            else:
+                self.avg_download_var.set("0 Mbps")
+                self.avg_upload_var.set("0 Mbps")
             
             # Обновляем статус
             self.status_var.set(f"Загружено записей: {len(rows)}")
