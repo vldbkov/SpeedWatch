@@ -31,11 +31,30 @@ _lock_file = None
 _lock_file_path = os.path.join(tempfile.gettempdir(), "internet_monitor.lock")
 
 
+def get_dpi_scale_factor():
+    """Получает масштабирование DPI для Windows."""
+    try:
+        if sys.platform == 'win32':
+            # Получаем DPI масштабирование (по умолчанию 96 DPI = 100%)
+            dpi = ctypes.windll.user32.GetDpiForSystem() if hasattr(ctypes.windll.user32, 'GetDpiForSystem') else 96
+            return dpi / 96.0
+    except:
+        pass
+    return 1.0
+
+
 class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
+        self.dpi_scale = get_dpi_scale_factor()
+        
+        # Увеличенное разрешение для современных мониторов
+        base_width, base_height = 810, 600
+        scaled_width = int(base_width * self.dpi_scale)
+        scaled_height = int(base_height * self.dpi_scale)
+        
         self.root.title("Internet Speed Monitor")
-        self.root.geometry("700x500")
+        self.root.geometry(f"{scaled_width}x{scaled_height}")
         self.center_window()
         
         # Установка иконки
@@ -113,7 +132,16 @@ class InternetSpeedMonitor:
         x = (screen_width // 2) - (width // 2)
         y = (screen_height // 2) - (height // 2)
         
-        self.root.geometry(f'{width}x{height}+{x}+{y}')     
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+    
+    def scale_font(self, font_name, size):
+        """Масштабирует размер шрифта в зависимости от DPI."""
+        scaled_size = int(size * self.dpi_scale)
+        return (font_name, scaled_size)
+    
+    def scale_value(self, value):
+        """Масштабирует любое числовое значение в зависимости от DPI."""
+        return int(value * self.dpi_scale)     
 
     def check_tray_icon(self):
         """Проверка что иконка трея запущена"""
@@ -332,9 +360,21 @@ class InternetSpeedMonitor:
     ###
     def create_widgets(self):
         """Создание виджетов интерфейса"""
+        # Конфигурируем стили для высокого разрешения
+        style = ttk.Style()
+        style.configure('TLabel', font=self.scale_font('Arial', 10))
+        style.configure('TButton', font=self.scale_font('Arial', 10), padding=self.scale_value(5))
+        style.configure('TCheckbutton', font=self.scale_font('Arial', 10))
+        style.configure('TRadiobutton', font=self.scale_font('Arial', 10))
+        style.configure('Treeview', font=self.scale_font('Arial', 9), rowheight=self.scale_value(25))
+        style.configure('Treeview.Heading', font=self.scale_font('Arial', 10))
+        style.configure('TNotebook.Tab', font=self.scale_font('Arial', 10))
+        style.configure('TLabelframe', font=self.scale_font('Arial', 11))
+        style.configure('TLabelframe.Label', font=self.scale_font('Arial', 11) + ('bold',))
+        
         # Создаем Notebook (вкладки)
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
+        self.notebook.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
         # Вкладка мониторинга
         self.monitor_frame = ttk.Frame(self.notebook)
@@ -369,37 +409,37 @@ class InternetSpeedMonitor:
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
         # Фрейм с текущими показателями
-        current_frame = ttk.LabelFrame(self.monitor_frame, text="Текущая скорость", padding=10)
-        current_frame.pack(fill='x', padx=10, pady=5)
+        current_frame = ttk.LabelFrame(self.monitor_frame, text="Текущая скорость", padding=self.scale_value(15))
+        current_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
         # Скорость загрузки
-        ttk.Label(current_frame, text="Скорость загрузки:", font=('Arial', 12)).grid(row=0, column=0, sticky='w', pady=5)
+        ttk.Label(current_frame, text="Скорость загрузки:", font=self.scale_font('Arial', 12)).grid(row=0, column=0, sticky='w', pady=5)
         self.download_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(current_frame, textvariable=self.download_var, font=('Arial', 14, 'bold')).grid(row=0, column=1, padx=10)
+        ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=0, column=1, padx=10)
         
         # Скорость отдачи
-        ttk.Label(current_frame, text="Скорость отдачи:", font=('Arial', 12)).grid(row=1, column=0, sticky='w', pady=5)
+        ttk.Label(current_frame, text="Скорость отдачи:", font=self.scale_font('Arial', 12)).grid(row=1, column=0, sticky='w', pady=5)
         self.upload_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(current_frame, textvariable=self.upload_var, font=('Arial', 14, 'bold')).grid(row=1, column=1, padx=10)
+        ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=1, column=1, padx=10)
         
         # Пинг
-        ttk.Label(current_frame, text="Пинг:", font=('Arial', 12)).grid(row=2, column=0, sticky='w', pady=5)
+        ttk.Label(current_frame, text="Пинг:", font=self.scale_font('Arial', 12)).grid(row=2, column=0, sticky='w', pady=5)
         self.ping_var = tk.StringVar(value="0 ms")
-        ttk.Label(current_frame, textvariable=self.ping_var, font=('Arial', 14, 'bold')).grid(row=2, column=1, padx=10)
+        ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=2, column=1, padx=10)
         
         # Jitter
-        ttk.Label(current_frame, text="Джиттер:", font=('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
+        ttk.Label(current_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
         self.jitter_var = tk.StringVar(value="0 ms")
-        ttk.Label(current_frame, textvariable=self.jitter_var, font=('Arial', 14, 'bold')).grid(row=3, column=1, padx=10)
+        ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=3, column=1, padx=10)
         
         # Время последнего измерения
-        ttk.Label(current_frame, text="Последнее измерение:", font=('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
+        ttk.Label(current_frame, text="Последнее измерение:", font=self.scale_font('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
         self.last_check_var = tk.StringVar(value="Никогда")
-        ttk.Label(current_frame, textvariable=self.last_check_var, font=('Arial', 10)).grid(row=4, column=1, padx=10)
+        ttk.Label(current_frame, textvariable=self.last_check_var, font=self.scale_font('Arial', 11)).grid(row=4, column=1, padx=10)
         
         # Фрейм с управлением
         control_frame = ttk.Frame(self.monitor_frame)
-        control_frame.pack(fill='x', padx=10, pady=20)
+        control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(20))
         
         # Кнопки управления
         self.start_button = ttk.Button(control_frame, text="Запуск мониторинга", command=self.start_monitoring)
@@ -409,25 +449,25 @@ class InternetSpeedMonitor:
         self.stop_button.pack(side='left', padx=5)
         
         self.test_button = ttk.Button(control_frame, text="Тест сейчас", command=self.run_speed_test)
-        self.test_button.pack(side='left', padx=5)
+        self.test_button.pack(side='left', padx=self.scale_value(5))
         
         # Информация о следующем тесте
-        ttk.Label(control_frame, text="Следующий тест через:").pack(side='left', padx=20)
+        ttk.Label(control_frame, text="Следующий тест через:", font=self.scale_font('Arial', 10)).pack(side='left', padx=self.scale_value(20))
         self.next_test_var = tk.StringVar(value="--:--:--")
-        ttk.Label(control_frame, textvariable=self.next_test_var, font=('Arial', 10, 'bold')).pack(side='left')
+        ttk.Label(control_frame, textvariable=self.next_test_var, font=self.scale_font('Arial', 11) + ('bold',)).pack(side='left')
         
         # Статус бар ПОД кнопками управления
         self.status_var = tk.StringVar()
         self.status_var.set("Готов к работе")
         status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=5)
-        status_bar.pack(fill='x', padx=10, pady=(0, 10))
+        status_bar.pack(fill='x', padx=self.scale_value(15), pady=(0, self.scale_value(15)))
     ###
 
     def setup_graph_tab(self):
         """Настройка вкладки с графиками"""
         # Панель управления графиками
         control_frame = ttk.Frame(self.graph_frame)
-        control_frame.pack(fill='x', padx=10, pady=10)
+        control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
         # Выбор периода
         ttk.Label(control_frame, text="Период:").pack(side='left')
@@ -438,14 +478,14 @@ class InternetSpeedMonitor:
         self.period_combo.pack(side='left', padx=5)
         
         # Кнопка обновления
-        ttk.Button(control_frame, text="Обновить график", command=self.update_graph).pack(side='left', padx=10)
+        ttk.Button(control_frame, text="Обновить график", command=self.update_graph).pack(side='left', padx=self.scale_value(10))
         
         # Кнопка экспорта
         ttk.Button(control_frame, text="Экспорт PNG", command=self.export_graph).pack(side='left')
         
         # Область для графиков
         self.graph_canvas_frame = ttk.Frame(self.graph_frame)
-        self.graph_canvas_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        self.graph_canvas_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
         # Создаем фигуру для matplotlib
         self.fig = Figure(figsize=(10, 6), dpi=100)
@@ -457,7 +497,7 @@ class InternetSpeedMonitor:
         """Настройка вкладки журнала"""
         # Панель управления журналом
         log_control_frame = ttk.Frame(self.log_frame)
-        log_control_frame.pack(fill='x', padx=10, pady=10)
+        log_control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
         # Кнопки управления журналом
         ttk.Button(log_control_frame, text="Обновить", command=self.update_log).pack(side='left', padx=5)
@@ -502,8 +542,8 @@ class InternetSpeedMonitor:
         ttk.Button(log_control_frame, text="Сбросить", command=self.reset_date_filter).pack(side='left', padx=5)
         
         # Панель со средними значениями
-        avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=10)
-        avg_frame.pack(fill='x', padx=10, pady=5)
+        avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=self.scale_value(15))
+        avg_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
         # Контейнер для значений (три колонки)
         values_frame = ttk.Frame(avg_frame)
@@ -513,40 +553,40 @@ class InternetSpeedMonitor:
         left_frame = ttk.Frame(values_frame)
         left_frame.pack(side='left', fill='x', expand=True, padx=5)
         
-        ttk.Label(left_frame, text="Загрузка:", font=('Arial', 10)).pack(side='left', padx=5)
+        ttk.Label(left_frame, text="Загрузка:", font=self.scale_font('Arial', 11)).pack(side='left', padx=5)
         self.avg_download_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(left_frame, textvariable=self.avg_download_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        ttk.Label(left_frame, textvariable=self.avg_download_var, font=self.scale_font('Arial', 12) + ('bold',)).pack(side='left', padx=5)
         
         # Средняя колонка - Отдача
         middle_frame = ttk.Frame(values_frame)
         middle_frame.pack(side='left', fill='x', expand=True, padx=5)
         
-        ttk.Label(middle_frame, text="Отдача:", font=('Arial', 10)).pack(side='left', padx=5)
+        ttk.Label(middle_frame, text="Отдача:", font=self.scale_font('Arial', 11)).pack(side='left', padx=5)
         self.avg_upload_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(middle_frame, textvariable=self.avg_upload_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        ttk.Label(middle_frame, textvariable=self.avg_upload_var, font=self.scale_font('Arial', 12) + ('bold',)).pack(side='left', padx=5)
         
         # Правая колонка - Пинг
         right_frame = ttk.Frame(values_frame)
         right_frame.pack(side='left', fill='x', expand=True, padx=5)
         
-        ttk.Label(right_frame, text="Пинг:", font=('Arial', 10)).pack(side='left', padx=5)
+        ttk.Label(right_frame, text="Пинг:", font=self.scale_font('Arial', 11)).pack(side='left', padx=5)
         self.avg_ping_var = tk.StringVar(value="0 ms")
-        ttk.Label(right_frame, textvariable=self.avg_ping_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        ttk.Label(right_frame, textvariable=self.avg_ping_var, font=self.scale_font('Arial', 12) + ('bold',)).pack(side='left', padx=5)
         
         # Четвёртая колонка - Джиттер
         jitter_frame = ttk.Frame(values_frame)
         jitter_frame.pack(side='left', fill='x', expand=True, padx=5)
         
-        ttk.Label(jitter_frame, text="Джиттер:", font=('Arial', 10)).pack(side='left', padx=5)
+        ttk.Label(jitter_frame, text="Джиттер:", font=self.scale_font('Arial', 11)).pack(side='left', padx=5)
         self.avg_jitter_var = tk.StringVar(value="0 ms")
-        ttk.Label(jitter_frame, textvariable=self.avg_jitter_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        ttk.Label(jitter_frame, textvariable=self.avg_jitter_var, font=self.scale_font('Arial', 12) + ('bold',)).pack(side='left', padx=5)
         
         # Таблица журнала
         columns = ('ID', 'Время', 'Загрузка (Mbps)', 'Отдача (Mbps)', 'Пинг (ms)', 'Джиттер (ms)', 'Сервер')
         
         # Создаем Treeview с полосой прокрутки
         tree_frame = ttk.Frame(self.log_frame)
-        tree_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        tree_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
         # Вертикальная полоса прокрутки
         vsb = ttk.Scrollbar(tree_frame, orient="vertical")
@@ -604,7 +644,7 @@ class InternetSpeedMonitor:
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
         settings_frame = ttk.LabelFrame(self.settings_frame, text="Настройки мониторинга", padding=20)
-        settings_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        settings_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
         # Интервал проверки
         ttk.Label(settings_frame, text="Интервал проверки (минут):").grid(row=0, column=0, sticky='w', pady=10)
@@ -627,11 +667,11 @@ class InternetSpeedMonitor:
         
         # Информация о программе
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
-        info_frame.pack(fill='x', padx=10, pady=10)
+        info_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
-        ttk.Label(info_frame, text="Internet Speed Monitor v1.0").pack()
-        ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения").pack()
-        ttk.Label(info_frame, text="© 2026").pack()
+        ttk.Label(info_frame, text="Internet Speed Monitor v1.0", font=self.scale_font('Arial', 12) + ('bold',)).pack()
+        ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения", font=self.scale_font('Arial', 10)).pack()
+        ttk.Label(info_frame, text="© 2026", font=self.scale_font('Arial', 9)).pack()
 
 
     def create_tray_icon(self):
@@ -1257,20 +1297,67 @@ class InternetSpeedMonitor:
                 except ValueError:
                     timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
             
+            # Фильтруем N/A значения (None, 0 или пустые)
+            # Для скорости загрузки/отдачи
+            download_valid = [(t, v) for t, v in zip(timestamps, download_speeds) if v and v > 0]
+            upload_valid = [(t, v) for t, v in zip(timestamps, upload_speeds) if v and v > 0]
+            # Для пинга и джиттера
+            ping_valid = [(t, v) for t, v in zip(timestamps, pings) if v and v > 0]
+            jitter_valid = [(t, v) for t, v in zip(timestamps, jitters) if v and v >= 0]
+            
+            # Вычисляем средние значения
+            avg_download = sum(v for _, v in download_valid) / len(download_valid) if download_valid else 0
+            avg_upload = sum(v for _, v in upload_valid) / len(upload_valid) if upload_valid else 0
+            avg_ping = sum(v for _, v in ping_valid) / len(ping_valid) if ping_valid else 0
+            avg_jitter = sum(v for _, v in jitter_valid) / len(jitter_valid) if jitter_valid else 0
+            
+            # Разделяем обратно на timestamps и values из отфильтрованных данных
+            if download_valid:
+                download_ts, download_vals = zip(*download_valid)
+            else:
+                download_ts, download_vals = [], []
+            
+            if upload_valid:
+                upload_ts, upload_vals = zip(*upload_valid)
+            else:
+                upload_ts, upload_vals = [], []
+            
+            if ping_valid:
+                ping_ts, ping_vals = zip(*ping_valid)
+            else:
+                ping_ts, ping_vals = [], []
+            
+            if jitter_valid:
+                jitter_ts, jitter_vals = zip(*jitter_valid)
+            else:
+                jitter_ts, jitter_vals = [], []
+            
             # Создаем графики
             ax1 = self.fig.add_subplot(211)
             ax2 = self.fig.add_subplot(212)
             
             # Настраиваем шрифты для подписей осей 
-            label_fontsize = 8  # Размер шрифта по умолчанию около 12, 
+            label_fontsize = 8
             title_fontsize = 11
             
             # График скорости
-            ax1.plot(timestamps, download_speeds, 'b-', label='Загрузка', linewidth=2)
-            ax1.plot(timestamps, upload_speeds, 'r-', label='Отдача', linewidth=2)
+            if download_vals:
+                ax1.plot(download_ts, download_vals, 'b-', label='Загрузка', linewidth=2)
+            if upload_vals:
+                ax1.plot(upload_ts, upload_vals, 'r-', label='Отдача', linewidth=2)
+            
+            # Добавляем средние значения как пунктирные линии
+            if download_valid or upload_valid:
+                time_range = [min(list(download_ts) + list(upload_ts)), 
+                             max(list(download_ts) + list(upload_ts))]
+                if avg_download > 0:
+                    ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6, label=f'Средняя загрузка: {avg_download:.1f} Mbps')
+                if avg_upload > 0:
+                    ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6, label=f'Средняя отдача: {avg_upload:.1f} Mbps')
+            
             ax1.set_title('Скорость интернета', fontsize=title_fontsize)
             ax1.set_ylabel('Скорость (Mbps)', fontsize=label_fontsize)
-            ax1.legend(fontsize=label_fontsize)
+            ax1.legend(fontsize=label_fontsize, loc='best')
             ax1.grid(True, alpha=0.3)
             ax1.tick_params(axis='both', labelsize=label_fontsize)
             
@@ -1278,13 +1365,23 @@ class InternetSpeedMonitor:
             import matplotlib.dates as mdates
             ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y %H:%M'))
             
-            # График пинга
-            ax2.plot(timestamps, pings, 'g-', label='Пинг', linewidth=2)
-            ax2.plot(timestamps, jitters, 'orange', label='Джиттер', linewidth=2)
+            # График пинга и джиттера
+            if ping_vals:
+                ax2.plot(ping_ts, ping_vals, 'g-', label='Пинг', linewidth=2)
+            if jitter_vals:
+                ax2.plot(jitter_ts, jitter_vals, color='orange', label='Джиттер', linewidth=2)
+            
+            # Добавляем средние значения как пунктирные линии
+            if ping_valid or jitter_valid:
+                if avg_ping > 0:
+                    ax2.axhline(y=avg_ping, color='g', linestyle='--', linewidth=1, alpha=0.6, label=f'Средний пинг: {avg_ping:.1f} ms')
+                if avg_jitter >= 0:
+                    ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6, label=f'Средний джиттер: {avg_jitter:.1f} ms')
+            
             ax2.set_title('Пинг и Джиттер', fontsize=title_fontsize)
             ax2.set_xlabel('', fontsize=label_fontsize)
             ax2.set_ylabel('Значение (ms)', fontsize=label_fontsize)
-            ax2.legend(fontsize=label_fontsize)
+            ax2.legend(fontsize=label_fontsize, loc='best')
             ax2.grid(True, alpha=0.3)
             ax2.tick_params(axis='both', labelsize=label_fontsize)
             
