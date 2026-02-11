@@ -17,6 +17,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import logging
 from tkcalendar import Calendar, DateEntry
+import tempfile
+import psutil
+
+# Условный импорт fcntl (только для Unix-систем)
+if sys.platform != 'win32':
+    import fcntl
+else:
+    import ctypes
 
 
 class InternetSpeedMonitor:
@@ -35,6 +43,8 @@ class InternetSpeedMonitor:
         self.running = False
         self.monitor_thread = None
         self.db_path = "../data/internet_speed.db"
+        self.lock_file = None
+        self.lock_file_path = os.path.join(tempfile.gettempdir(), "internet_monitor.lock")
         self.setup_logging()
         self.setup_database()
         
@@ -58,10 +68,6 @@ class InternetSpeedMonitor:
         self.is_first_load = True  # Флаг первого запуска
         self.load_settings()
         self.is_first_load = False  # Сбрасываем после загрузки
-        
-        # Защита от дублирования запуска
-        if self.check_already_running():
-            return
         
         # Создание меню для трея
         self.create_tray_icon()
@@ -589,20 +595,39 @@ class InternetSpeedMonitor:
         # Обновляем меню
         self.update_tray_menu()
 
-    def check_already_running(self):
-        """Проверка, не запущено ли уже приложение"""
+    def acquire_lock(self):
+        """Захватить блокировку (для Unix-систем)"""
+        if sys.platform == 'win32':
+            return True  # На Windows не используется
+        
         try:
-            import socket
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.bind(('localhost', 12345))
-            # Если смогли забиндиться на порт, значит приложение не запущено
-            s.close()
-            return False
-        except:
-            messagebox.showwarning("Внимание", "Приложение уже запущено!")
-            self.root.quit()
+            self.lock_file = open(self.lock_file_path, 'w')
+            import fcntl
+            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.lock_file.write(str(os.getpid()))
+            self.lock_file.flush()
             return True
+        except (IOError, OSError):
+            return False
 
+    def release_lock(self):
+        """Освободить блокировку (для Unix-систем)"""
+        if sys.platform == 'win32':
+            return  # На Windows не используется
+        
+        try:
+            if self.lock_file:
+                import fcntl
+                fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                self.lock_file.close()
+            
+            if os.path.exists(self.lock_file_path):
+                try:
+                    os.remove(self.lock_file_path)
+                except:
+                    pass
+        except:
+            pass
 
     def load_settings(self):
         """Загрузка настроек из БД"""
@@ -1235,6 +1260,9 @@ class InternetSpeedMonitor:
         except:
             pass
         
+        # Освобождаем блокировку
+        self.release_lock()
+        
         # Закрываем приложение
         self.root.quit()
         self.logger.info("Приложение завершено")
@@ -1260,7 +1288,95 @@ class InternetSpeedMonitor:
         sys.exit()        
     ###
 
+def check_if_already_running():
+    """Глобальная проверка, не запущено ли уже приложение (до создания Tk)"""
+    if sys.platform == 'win32':
+        current_pid = os.getpid()
+        current_script = os.path.abspath(sys.argv[0]).lower()
+        script_name = os.path.basename(current_script).lower()
+        script_dir = os.path.dirname(current_script).lower()
+        
+        print(f"[DEBUG] Проверка на дублирование запуска")
+        print(f"[DEBUG] Текущий PID: {current_pid}")
+        print(f"[DEBUG] Скрипт (абсолютный, lowercase): {current_script}")
+        print(f"[DEBUG] Имя скрипта: {script_name}")
+        print(f"[DEBUG] Директория: {script_dir}")
+        print(f"[DEBUG] Поиск других процессов...")
+        
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    # Пропускаем текущий процесс
+                    if proc.info['pid'] == current_pid:
+                        continue
+                    
+                    proc_name = proc.info['name']
+                    cmdline = proc.info['cmdline']
+                    
+                    # Ищем другие процессы Python
+                    if proc_name in ['python.exe', 'python', 'pythonw.exe']:
+                        if not cmdline or len(cmdline) == 0:
+                            continue
+                        
+                        print(f"[DEBUG] Проверяем процесс Python - PID: {proc.info['pid']}")
+                        print(f"[DEBUG]   Name: {proc_name}")
+                        print(f"[DEBUG]   Cmdline: {cmdline}")
+                        
+                        # Преобразуем в строку для проверки
+                        cmdline_str = ' '.join(str(arg) for arg in cmdline if arg).lower()
+                        print(f"[DEBUG]   Cmdline (lower): {cmdline_str}")
+                        
+                        # Проверяем совпадение:
+                        # Ищем наш скрипт в аргументах процесса
+                        
+                        # Вариант 1: точное совпадение полного пути
+                        if current_script in cmdline_str:
+                            print(f"[DEBUG] ✓ СОВПАДЕНИЕ! Точный путь найден в cmdline")
+                            return True
+                        
+                        # Вариант 2: проверяем каждый аргумент отдельно
+                        for arg in cmdline:
+                            if arg:
+                                arg_lower = str(arg).lower()
+                                # Если аргумент - это путь к скрипту
+                                if os.path.isfile(arg):
+                                    arg_abs_lower = os.path.abspath(arg).lower()
+                                    print(f"[DEBUG]   Проверка аргумента как пути: {arg}")
+                                    print(f"[DEBUG]     Абсолютный путь: {arg_abs_lower}")
+                                    if arg_abs_lower == current_script:
+                                        print(f"[DEBUG] ✓ СОВПАДЕНИЕ! Путь найден")
+                                        return True
+                                
+                                # Если аргумент содержит main.py с нашей директорией
+                                if 'main.py' in arg_lower:
+                                    print(f"[DEBUG]   Найден main.py в аргументе: {arg}")
+                                    if arg_lower.endswith('main.py') or arg_lower == 'main.py':
+                                        # Это наш main.py
+                                        print(f"[DEBUG] ✓ СОВПАДЕНИЕ! main.py найден")
+                                        return True
+                        
+                        print(f"[DEBUG]   Нет совпадения")
+                
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, TypeError) as e:
+                    continue
+        except Exception as e:
+            print(f"[DEBUG] Ошибка при проверке процессов: {e}")
+            pass
+        
+        print(f"[DEBUG] Дубликатов не найдено\n")
+    
+    return False
+
+
 def main():
+    # Проверка перед началом
+    if check_if_already_running():
+        root = tk.Tk()
+        root.withdraw()  # Скрываем основное окно
+        messagebox.showwarning("Внимание", "Приложение уже запущено!")
+        root.destroy()
+        return
+    
     root = tk.Tk()
     app = InternetSpeedMonitor(root)
     root.mainloop()
