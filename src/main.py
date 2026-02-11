@@ -494,7 +494,7 @@ class InternetSpeedMonitor:
         avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=10)
         avg_frame.pack(fill='x', padx=10, pady=5)
         
-        # Контейнер для значений (две колонки)
+        # Контейнер для значений (три колонки)
         values_frame = ttk.Frame(avg_frame)
         values_frame.pack(fill='x')
         
@@ -506,13 +506,21 @@ class InternetSpeedMonitor:
         self.avg_download_var = tk.StringVar(value="0 Mbps")
         ttk.Label(left_frame, textvariable=self.avg_download_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
         
-        # Правая колонка - Отдача
+        # Средняя колонка - Отдача
+        middle_frame = ttk.Frame(values_frame)
+        middle_frame.pack(side='left', fill='x', expand=True, padx=5)
+        
+        ttk.Label(middle_frame, text="Отдача:", font=('Arial', 10)).pack(side='left', padx=5)
+        self.avg_upload_var = tk.StringVar(value="0 Mbps")
+        ttk.Label(middle_frame, textvariable=self.avg_upload_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        
+        # Правая колонка - Пинг
         right_frame = ttk.Frame(values_frame)
         right_frame.pack(side='left', fill='x', expand=True, padx=5)
         
-        ttk.Label(right_frame, text="Отдача:", font=('Arial', 10)).pack(side='left', padx=5)
-        self.avg_upload_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(right_frame, textvariable=self.avg_upload_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        ttk.Label(right_frame, text="Пинг:", font=('Arial', 10)).pack(side='left', padx=5)
+        self.avg_ping_var = tk.StringVar(value="0 ms")
+        ttk.Label(right_frame, textvariable=self.avg_ping_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
         
         # Таблица журнала
         columns = ('ID', 'Время', 'Загрузка (Mbps)', 'Отдача (Mbps)', 'Пинг (ms)', 'Сервер')
@@ -529,8 +537,20 @@ class InternetSpeedMonitor:
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
         hsb.pack(side='bottom', fill='x')
         
+        # Создаем Treeview для журнала
         self.log_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
-                                    yscrollcommand=vsb.set, xscrollcommand=hsb.set)  
+                                    yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        
+        # Настройка стиля для Treeview с поддержкой тегов
+        style = ttk.Style()
+        
+        # Создаем пользовательский стиль для низких значений
+        # К сожалению, ttk.Treeview имеет ограничения с цветами, поэтому используем красный текст
+        style.configure('Treeview', rowheight=20)
+        
+        # Применяем красный цвет для текста в тегах 'low_value'
+        self.log_tree.tag_configure('low_value', foreground='red', background='lightyellow')
+        
         ###        
         # Настройка колонок - все фиксированной ширины, растяжение отключено
         for i, col in enumerate(columns):
@@ -1044,56 +1064,85 @@ class InternetSpeedMonitor:
             cursor.execute(query, params)
             rows = cursor.fetchall()
             
-            # Добавляем данные в таблицу
+            # Сначала рассчитываем средние значения для определения порогов
+            if rows:
+                # Фильтруем значения которые не None
+                download_speeds = [row[2] for row in rows if row[2]]
+                upload_speeds = [row[3] for row in rows if row[3]]
+                pings = [row[4] for row in rows if row[4]]
+                
+                # Рассчитываем средние и пороги
+                # Для скоростей: 75% от среднего = ниже на 25%
+                # Для пинга: 125% от среднего = выше на 25%
+                avg_download = sum(download_speeds) / len(download_speeds) if download_speeds else 0
+                avg_upload = sum(upload_speeds) / len(upload_speeds) if upload_speeds else 0
+                avg_ping = sum(pings) / len(pings) if pings else 0
+                
+                threshold_download = avg_download * 0.75
+                threshold_upload = avg_upload * 0.75
+                threshold_ping = avg_ping * 1.25
+                
+                self.avg_download_var.set(f"{avg_download:.2f} Mbps")
+                self.avg_upload_var.set(f"{avg_upload:.2f} Mbps")
+                self.avg_ping_var.set(f"{avg_ping:.2f} ms")
+            else:
+                threshold_download = 0
+                threshold_upload = 0
+                threshold_ping = 0
+                self.avg_download_var.set("0 Mbps")
+                self.avg_upload_var.set("0 Mbps")
+                self.avg_ping_var.set("0 ms")
+            
+            # Добавляем данные в таблицу с форматированием
             for row in rows:
-                ###
                 # Форматируем дату из формата "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
                 timestamp = row[1]
                 if timestamp and isinstance(timestamp, str):
                     try:
-                        # Парсим оригинальную дату
                         dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
-                        # Форматируем в нужный формат
                         formatted_timestamp = dt.strftime('%d.%m.%y %H:%M')
                     except:
                         formatted_timestamp = timestamp
                 else:
                     formatted_timestamp = "N/A"
 
+                # Форматируем значения с проверкой на низкие значения
+                download_str = f"{row[2]:.2f}" if row[2] else "N/A"
+                upload_str = f"{row[3]:.2f}" if row[3] else "N/A"
+                ping_str = f"{row[4]:.2f}" if row[4] else "N/A"
+                
                 formatted_row = (
                     row[0],
-                    formatted_timestamp,  # НОВЫЙ ФОРМАТ ДАТЫ
-                    f"{row[2]:.2f}" if row[2] else "N/A",
-                    f"{row[3]:.2f}" if row[3] else "N/A",
-                    f"{row[4]:.2f}" if row[4] else "N/A",
+                    formatted_timestamp,
+                    download_str,
+                    upload_str,
+                    ping_str,
                     row[5] or "N/A"
                 )
-                ###
-                self.log_tree.insert('', 'end', values=formatted_row)            
+                
+                # Вставляем строку
+                item_id = self.log_tree.insert('', 'end', values=formatted_row)
+                
+                # Проверяем, выполняются ли условия для выделения
+                should_highlight = False
+                
+                # Проверяем загрузку (ниже на 25%)
+                if row[2] and row[2] < threshold_download:
+                    should_highlight = True
+                
+                # Проверяем отдачу (ниже на 25%)
+                if row[3] and row[3] < threshold_upload:
+                    should_highlight = True
+                
+                # Проверяем пинг (выше на 25%)
+                if row[4] and row[4] >= threshold_ping:
+                    should_highlight = True
+                
+                # Применяем тег к строке если выполнено хотя бы одно условие
+                if should_highlight:
+                    self.log_tree.item(item_id, tags=('low_value',))
             
             conn.close()
-            
-            # Рассчитываем средние значения
-            if rows:
-                # Фильтруем значения которые не "N/A"
-                download_speeds = [row[2] for row in rows if row[2]]
-                upload_speeds = [row[3] for row in rows if row[3]]
-                
-                # Рассчитываем средние
-                if download_speeds:
-                    avg_download = sum(download_speeds) / len(download_speeds)
-                    self.avg_download_var.set(f"{avg_download:.2f} Mbps")
-                else:
-                    self.avg_download_var.set("0 Mbps")
-                
-                if upload_speeds:
-                    avg_upload = sum(upload_speeds) / len(upload_speeds)
-                    self.avg_upload_var.set(f"{avg_upload:.2f} Mbps")
-                else:
-                    self.avg_upload_var.set("0 Mbps")
-            else:
-                self.avg_download_var.set("0 Mbps")
-                self.avg_upload_var.set("0 Mbps")
             
             # Обновляем статус
             self.status_var.set(f"Загружено записей: {len(rows)}")
