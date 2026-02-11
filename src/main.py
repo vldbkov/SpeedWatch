@@ -26,6 +26,10 @@ if sys.platform != 'win32':
 else:
     import ctypes
 
+# Глобальный файловый лок
+_lock_file = None
+_lock_file_path = os.path.join(tempfile.gettempdir(), "internet_monitor.lock")
+
 
 class InternetSpeedMonitor:
     def __init__(self, root):
@@ -81,6 +85,11 @@ class InternetSpeedMonitor:
         
         # Сразу сворачиваем в трей без показа окна
         self.minimize_to_tray()
+        # Обновляем меню трея, чтобы текст пункта соответствовал текущему состоянию окна
+        try:
+            self.update_tray_menu()
+        except Exception:
+            pass
         
         ###
         # Флаг начального состояния (старт в трее)
@@ -596,37 +605,61 @@ class InternetSpeedMonitor:
         self.update_tray_menu()
 
     def acquire_lock(self):
-        """Захватить блокировку (для Unix-систем)"""
-        if sys.platform == 'win32':
-            return True  # На Windows не используется
-        
+        """Захватить эксклюзивную блокировку файла"""
         try:
-            self.lock_file = open(self.lock_file_path, 'w')
-            import fcntl
-            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self.lock_file.write(str(os.getpid()))
-            self.lock_file.flush()
-            return True
-        except (IOError, OSError):
+            if sys.platform == 'win32':
+                import msvcrt
+                # Открываем файл для исключительного доступа
+                # 'a+' открывает для добавления, создает если не существует
+                self.lock_file = open(self.lock_file_path, 'a+')
+                # Пытаемся захватить эксклюзивный лок на первый байт
+                # Если другой процесс уже держит лок - это будет ошибка
+                msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                self.lock_file.seek(0)
+                self.lock_file.write(str(os.getpid()))
+                self.lock_file.truncate()
+                self.lock_file.flush()
+                self.logger.info(f"Файловый лок захвачен успешно: {self.lock_file_path}")
+                return True
+            else:
+                # Unix: используем fcntl
+                self.lock_file = open(self.lock_file_path, 'w')
+                import fcntl
+                fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.lock_file.write(str(os.getpid()))
+                self.lock_file.flush()
+                self.logger.info(f"Файловый лок захвачен успешно: {self.lock_file_path}")
+                return True
+        except (IOError, OSError, BlockingIOError) as e:
+            self.logger.error(f"Не удалось захватить лок: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Ошибка захвата лока: {e}")
             return False
 
     def release_lock(self):
-        """Освободить блокировку (для Unix-систем)"""
-        if sys.platform == 'win32':
-            return  # На Windows не используется
-        
+        """Освободить блокировку файла"""
         try:
             if self.lock_file:
-                import fcntl
-                fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                if sys.platform == 'win32':
+                    import msvcrt
+                    # Разблокируем файл
+                    msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                
                 self.lock_file.close()
-            
+                self.lock_file = None
+                self.logger.info("Файловый лок освобожден")
+        except Exception as e:
+            self.logger.error(f"Ошибка освобождения лока: {e}")
+        
+        # Пытаемся удалить файл лока
+        try:
             if os.path.exists(self.lock_file_path):
-                try:
-                    os.remove(self.lock_file_path)
-                except:
-                    pass
-        except:
+                os.remove(self.lock_file_path)
+        except Exception:
             pass
 
     def load_settings(self):
@@ -1260,9 +1293,6 @@ class InternetSpeedMonitor:
         except:
             pass
         
-        # Освобождаем блокировку
-        self.release_lock()
-        
         # Закрываем приложение
         self.root.quit()
         self.logger.info("Приложение завершено")
@@ -1289,87 +1319,55 @@ class InternetSpeedMonitor:
     ###
 
 def check_if_already_running():
-    """Глобальная проверка, не запущено ли уже приложение (до создания Tk)"""
-    if sys.platform == 'win32':
-        current_pid = os.getpid()
-        current_script = os.path.abspath(sys.argv[0]).lower()
-        script_name = os.path.basename(current_script).lower()
-        script_dir = os.path.dirname(current_script).lower()
-        
-        print(f"[DEBUG] Проверка на дублирование запуска")
-        print(f"[DEBUG] Текущий PID: {current_pid}")
-        print(f"[DEBUG] Скрипт (абсолютный, lowercase): {current_script}")
-        print(f"[DEBUG] Имя скрипта: {script_name}")
-        print(f"[DEBUG] Директория: {script_dir}")
-        print(f"[DEBUG] Поиск других процессов...")
-        
-        try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                try:
-                    # Пропускаем текущий процесс
-                    if proc.info['pid'] == current_pid:
-                        continue
-                    
-                    proc_name = proc.info['name']
-                    cmdline = proc.info['cmdline']
-                    
-                    # Ищем другие процессы Python
-                    if proc_name in ['python.exe', 'python', 'pythonw.exe']:
-                        if not cmdline or len(cmdline) == 0:
-                            continue
-                        
-                        print(f"[DEBUG] Проверяем процесс Python - PID: {proc.info['pid']}")
-                        print(f"[DEBUG]   Name: {proc_name}")
-                        print(f"[DEBUG]   Cmdline: {cmdline}")
-                        
-                        # Преобразуем в строку для проверки
-                        cmdline_str = ' '.join(str(arg) for arg in cmdline if arg).lower()
-                        print(f"[DEBUG]   Cmdline (lower): {cmdline_str}")
-                        
-                        # Проверяем совпадение:
-                        # Ищем наш скрипт в аргументах процесса
-                        
-                        # Вариант 1: точное совпадение полного пути
-                        if current_script in cmdline_str:
-                            print(f"[DEBUG] ✓ СОВПАДЕНИЕ! Точный путь найден в cmdline")
-                            return True
-                        
-                        # Вариант 2: проверяем каждый аргумент отдельно
-                        for arg in cmdline:
-                            if arg:
-                                arg_lower = str(arg).lower()
-                                # Если аргумент - это путь к скрипту
-                                if os.path.isfile(arg):
-                                    arg_abs_lower = os.path.abspath(arg).lower()
-                                    print(f"[DEBUG]   Проверка аргумента как пути: {arg}")
-                                    print(f"[DEBUG]     Абсолютный путь: {arg_abs_lower}")
-                                    if arg_abs_lower == current_script:
-                                        print(f"[DEBUG] ✓ СОВПАДЕНИЕ! Путь найден")
-                                        return True
-                                
-                                # Если аргумент содержит main.py с нашей директорией
-                                if 'main.py' in arg_lower:
-                                    print(f"[DEBUG]   Найден main.py в аргументе: {arg}")
-                                    if arg_lower.endswith('main.py') or arg_lower == 'main.py':
-                                        # Это наш main.py
-                                        print(f"[DEBUG] ✓ СОВПАДЕНИЕ! main.py найден")
-                                        return True
-                        
-                        print(f"[DEBUG]   Нет совпадения")
-                
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, TypeError) as e:
-                    continue
-        except Exception as e:
-            print(f"[DEBUG] Ошибка при проверке процессов: {e}")
-            pass
-        
-        print(f"[DEBUG] Дубликатов не найдено\n")
+    """Проверка через файловую блокировку - не запущено ли уже приложение"""
+    global _lock_file
     
-    return False
+    try:
+        if sys.platform == 'win32':
+            import msvcrt
+            print(f"[DEBUG] Попытка захватить файловый лок: {_lock_file_path}")
+            
+            # Открываем файл для добавления/чтения
+            lock_f = open(_lock_file_path, 'a+')
+            
+            try:
+                # Пытаемся захватить эксклюзивный лок на первый байт
+                msvcrt.locking(lock_f.fileno(), msvcrt.LK_NBLCK, 1)
+                # Успешно захватили - других экземпляров нет
+                print(f"[DEBUG] ✓ Лок захвачен успешно, процесс может продолжать")
+                _lock_file = lock_f  # Сохраняем файл - держим блокировку
+                return False  # Возвращаем False = нет других запущенных экземпляров
+            except (OSError, IOError, BlockingIOError) as e:
+                # Не удалось захватить лок - другой процесс его удерживает
+                print(f"[DEBUG] ✗ Лок уже занят другим процессом: {e}")
+                lock_f.close()
+                return True  # Возвращаем True = приложение уже запущено
+        else:
+            # Unix
+            import fcntl
+            print(f"[DEBUG] Попытка захватить файловый лок (Unix): {_lock_file_path}")
+            
+            lock_f = open(_lock_file_path, 'w')
+            try:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                print(f"[DEBUG] ✓ Лок захвачен успешно, процесс может продолжать")
+                _lock_file = lock_f
+                return False
+            except IOError as e:
+                print(f"[DEBUG] ✗ Лок уже занят другим процессом: {e}")
+                lock_f.close()
+                return True
+    
+    except Exception as e:
+        print(f"[DEBUG] Ошибка при проверке лока: {e}")
+        # Если ошибка - даем разрешение на запуск (лучше двойной запуск, чем запирание)
+        return False
 
 
 def main():
-    # Проверка перед началом
+    global _lock_file
+    
+    # Проверка через файловую блокировку
     if check_if_already_running():
         root = tk.Tk()
         root.withdraw()  # Скрываем основное окно
@@ -1377,9 +1375,40 @@ def main():
         root.destroy()
         return
     
-    root = tk.Tk()
-    app = InternetSpeedMonitor(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+        app = InternetSpeedMonitor(root)
+        root.mainloop()
+    finally:
+        # Гарантированное освобождение лока при выходе
+        if _lock_file:
+            try:
+                if sys.platform == 'win32':
+                    import msvcrt
+                    try:
+                        msvcrt.locking(_lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    except Exception:
+                        pass  # Иногда уже разблокирован
+                else:
+                    import fcntl
+                    try:
+                        fcntl.flock(_lock_file.fileno(), fcntl.LOCK_UN)
+                    except Exception:
+                        pass
+                
+                _lock_file.close()
+                _lock_file = None
+                print("[DEBUG] Лок освобожден при выходе")
+            except Exception as e:
+                print(f"[DEBUG] Ошибка освобождения лока: {e}")
+        
+        # Гарантированно удаляем файл лока
+        try:
+            if os.path.exists(_lock_file_path):
+                os.remove(_lock_file_path)
+                print(f"[DEBUG] Файл лока удален: {_lock_file_path}")
+        except Exception as e:
+            print(f"[DEBUG] Ошибка удаления файла лока: {e}")
 
 
 if __name__ == "__main__":
