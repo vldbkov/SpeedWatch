@@ -146,9 +146,15 @@ class InternetSpeedMonitor:
                 download_speed REAL,
                 upload_speed REAL,
                 ping REAL,
+                jitter REAL,
                 server TEXT
             )
         ''')
+        # Добавляем колонку jitter если её ещё нет (для совместимости с существующими БД)
+        try:
+            cursor.execute('ALTER TABLE speed_measurements ADD COLUMN jitter REAL DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -381,10 +387,15 @@ class InternetSpeedMonitor:
         self.ping_var = tk.StringVar(value="0 ms")
         ttk.Label(current_frame, textvariable=self.ping_var, font=('Arial', 14, 'bold')).grid(row=2, column=1, padx=10)
         
+        # Jitter
+        ttk.Label(current_frame, text="Джиттер:", font=('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
+        self.jitter_var = tk.StringVar(value="0 ms")
+        ttk.Label(current_frame, textvariable=self.jitter_var, font=('Arial', 14, 'bold')).grid(row=3, column=1, padx=10)
+        
         # Время последнего измерения
-        ttk.Label(current_frame, text="Последнее измерение:", font=('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
+        ttk.Label(current_frame, text="Последнее измерение:", font=('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
         self.last_check_var = tk.StringVar(value="Никогда")
-        ttk.Label(current_frame, textvariable=self.last_check_var, font=('Arial', 10)).grid(row=3, column=1, padx=10)
+        ttk.Label(current_frame, textvariable=self.last_check_var, font=('Arial', 10)).grid(row=4, column=1, padx=10)
         
         # Фрейм с управлением
         control_frame = ttk.Frame(self.monitor_frame)
@@ -522,8 +533,16 @@ class InternetSpeedMonitor:
         self.avg_ping_var = tk.StringVar(value="0 ms")
         ttk.Label(right_frame, textvariable=self.avg_ping_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
         
+        # Четвёртая колонка - Джиттер
+        jitter_frame = ttk.Frame(values_frame)
+        jitter_frame.pack(side='left', fill='x', expand=True, padx=5)
+        
+        ttk.Label(jitter_frame, text="Джиттер:", font=('Arial', 10)).pack(side='left', padx=5)
+        self.avg_jitter_var = tk.StringVar(value="0 ms")
+        ttk.Label(jitter_frame, textvariable=self.avg_jitter_var, font=('Arial', 11, 'bold')).pack(side='left', padx=5)
+        
         # Таблица журнала
-        columns = ('ID', 'Время', 'Загрузка (Mbps)', 'Отдача (Mbps)', 'Пинг (ms)', 'Сервер')
+        columns = ('ID', 'Время', 'Загрузка (Mbps)', 'Отдача (Mbps)', 'Пинг (ms)', 'Джиттер (ms)', 'Сервер')
         
         # Создаем Treeview с полосой прокрутки
         tree_frame = ttk.Frame(self.log_frame)
@@ -566,8 +585,10 @@ class InternetSpeedMonitor:
                 self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=False)
             elif i == 4:  # Пинг
                 self.log_tree.column(col, width=70, anchor=tk.CENTER, stretch=False)
+            elif i == 5:  # Джиттер
+                self.log_tree.column(col, width=80, anchor=tk.CENTER, stretch=False)
             else:  # Сервер
-                self.log_tree.column(col, width=235, anchor=tk.W, stretch=False)
+                self.log_tree.column(col, width=200, anchor=tk.W, stretch=False)
         ###
         
         self.log_tree.pack(fill='both', expand=True)
@@ -886,37 +907,39 @@ class InternetSpeedMonitor:
             upload_speed = ost.upload_test(server, duration=5, threads=4)
             
             # Сохраняем результаты
-            self.save_test_results(download_speed, upload_speed, ping, server_name)
+            self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
             
             # Обновляем интерфейс с завершающим сообщением
             self.root.after(0, lambda: self._update_ui_with_results_and_status(
-                download_speed, upload_speed, ping, server_name,
+                download_speed, upload_speed, ping, jitter, server_name,
                 f"Тест завершен"
             ))
             
             self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
-                           f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms")
+                           f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms, Jitter={jitter:.2f} ms")
             
         except Exception as e:
             self.logger.error(f"Ошибка теста скорости: {e}")
             self.root.after(0, lambda: self._update_ui_with_error(str(e)))
 
     ###
-    def _update_ui_with_results(self, download, upload, ping, server):
+    def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
         self.download_var.set(f"{download:.2f} Mbps")
         self.upload_var.set(f"{upload:.2f} Mbps")
         self.ping_var.set(f"{ping:.2f} ms")
+        self.jitter_var.set(f"{jitter:.2f} ms")
         # ИЗМЕНЕНО: формат даты с "YYYY-MM-DD HH:MM:SS" на "DD.MM.YY HH:MM"
         self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
         self.status_var.set("Тест завершен")
         self.test_button.config(state='normal')
     ###
-    def _update_ui_with_results_and_status(self, download, upload, ping, server, status_message):
+    def _update_ui_with_results_and_status(self, download, upload, ping, jitter, server, status_message):
         """Обновление интерфейс с результатами и кастомным статусом"""
         self.download_var.set(f"{download:.2f} Mbps")
         self.upload_var.set(f"{upload:.2f} Mbps")
         self.ping_var.set(f"{ping:.2f} ms")
+        self.jitter_var.set(f"{jitter:.2f} ms")
         self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
         self.status_var.set(status_message)
         self.test_button.config(state='normal')
@@ -927,12 +950,13 @@ class InternetSpeedMonitor:
         self.download_var.set("Ошибка")
         self.upload_var.set("Ошибка")
         self.ping_var.set("Ошибка")
+        self.jitter_var.set("Ошибка")
         self.status_var.set(f"Ошибка: {error_msg}")
         self.test_button.config(state='normal')
         messagebox.showerror("Ошибка", f"Не удалось выполнить тест скорости: {error_msg}")
 
     ###
-    def save_test_results(self, download, upload, ping, server):
+    def save_test_results(self, download, upload, ping, jitter, server):
         """Сохранение результатов теста в БД"""
         try:
             conn = sqlite3.connect(self.db_path)
@@ -940,9 +964,9 @@ class InternetSpeedMonitor:
             
             cursor.execute('''
                 INSERT INTO speed_measurements 
-                (timestamp, download_speed, upload_speed, ping, server) 
-                VALUES (?, ?, ?, ?, ?)
-            ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), download, upload, ping, server))
+                (timestamp, download_speed, upload_speed, ping, jitter, server) 
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), download, upload, ping, jitter, server))
             
             conn.commit()
             conn.close()
@@ -1043,7 +1067,7 @@ class InternetSpeedMonitor:
             
             # Строим запрос с фильтром
             query = '''
-                SELECT id, timestamp, download_speed, upload_speed, ping, server 
+                SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server 
                 FROM speed_measurements 
                 WHERE 1=1
             '''
@@ -1070,6 +1094,7 @@ class InternetSpeedMonitor:
                 download_speeds = [row[2] for row in rows if row[2]]
                 upload_speeds = [row[3] for row in rows if row[3]]
                 pings = [row[4] for row in rows if row[4]]
+                jitters = [row[5] for row in rows if row[5]]
                 
                 # Рассчитываем средние и пороги
                 # Для скоростей: 75% от среднего = ниже на 25%
@@ -1077,6 +1102,7 @@ class InternetSpeedMonitor:
                 avg_download = sum(download_speeds) / len(download_speeds) if download_speeds else 0
                 avg_upload = sum(upload_speeds) / len(upload_speeds) if upload_speeds else 0
                 avg_ping = sum(pings) / len(pings) if pings else 0
+                avg_jitter = sum(jitters) / len(jitters) if jitters else 0
                 
                 threshold_download = avg_download * 0.75
                 threshold_upload = avg_upload * 0.75
@@ -1085,6 +1111,7 @@ class InternetSpeedMonitor:
                 self.avg_download_var.set(f"{avg_download:.2f} Mbps")
                 self.avg_upload_var.set(f"{avg_upload:.2f} Mbps")
                 self.avg_ping_var.set(f"{avg_ping:.2f} ms")
+                self.avg_jitter_var.set(f"{avg_jitter:.2f} ms")
             else:
                 threshold_download = 0
                 threshold_upload = 0
@@ -1092,6 +1119,7 @@ class InternetSpeedMonitor:
                 self.avg_download_var.set("0 Mbps")
                 self.avg_upload_var.set("0 Mbps")
                 self.avg_ping_var.set("0 ms")
+                self.avg_jitter_var.set("0 ms")
             
             # Добавляем данные в таблицу с форматированием
             for row in rows:
@@ -1110,6 +1138,7 @@ class InternetSpeedMonitor:
                 download_str = f"{row[2]:.2f}" if row[2] else "N/A"
                 upload_str = f"{row[3]:.2f}" if row[3] else "N/A"
                 ping_str = f"{row[4]:.2f}" if row[4] else "N/A"
+                jitter_str = f"{row[5]:.2f}" if row[5] else "N/A"
                 
                 formatted_row = (
                     row[0],
@@ -1117,7 +1146,8 @@ class InternetSpeedMonitor:
                     download_str,
                     upload_str,
                     ping_str,
-                    row[5] or "N/A"
+                    jitter_str,
+                    row[6] or "N/A"
                 )
                 
                 # Вставляем строку
@@ -1197,7 +1227,7 @@ class InternetSpeedMonitor:
             cutoff_date = datetime.now() - timedelta(days=days)
             
             cursor.execute('''
-                SELECT timestamp, download_speed, upload_speed, ping 
+                SELECT timestamp, download_speed, upload_speed, ping, jitter 
                 FROM speed_measurements 
                 WHERE timestamp >= ? 
                 ORDER BY timestamp
@@ -1218,6 +1248,7 @@ class InternetSpeedMonitor:
             download_speeds = [row[1] for row in data]
             upload_speeds = [row[2] for row in data]
             pings = [row[3] for row in data]
+            jitters = [row[4] for row in data]
             
             # Преобразуем строки времени в datetime
             if isinstance(timestamps[0], str):
@@ -1249,9 +1280,10 @@ class InternetSpeedMonitor:
             
             # График пинга
             ax2.plot(timestamps, pings, 'g-', label='Пинг', linewidth=2)
-            ax2.set_title('Пинг', fontsize=title_fontsize)
+            ax2.plot(timestamps, jitters, 'orange', label='Джиттер', linewidth=2)
+            ax2.set_title('Пинг и Джиттер', fontsize=title_fontsize)
             ax2.set_xlabel('', fontsize=label_fontsize)
-            ax2.set_ylabel('Пинг (ms)', fontsize=label_fontsize)
+            ax2.set_ylabel('Значение (ms)', fontsize=label_fontsize)
             ax2.legend(fontsize=label_fontsize)
             ax2.grid(True, alpha=0.3)
             ax2.tick_params(axis='both', labelsize=label_fontsize)
