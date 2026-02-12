@@ -5,7 +5,6 @@ __pycache__/
 .Python
 venv/
 .venv/
-#.vscode/
 
 # === Системные файлы Python ===
 __pycache__/
@@ -92,7 +91,6 @@ release_notes_*.md
 draft_releases/
 
 # === IDE и редакторы ===
-.vscode/
 .idea/
 *.swp
 *.swo
