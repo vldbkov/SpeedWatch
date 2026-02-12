@@ -1,0 +1,20 @@
+{
+    "github.copilot.enable": {
+        "*": true,
+        "plaintext": false,
+        "markdown": false,
+        "json": false,
+        "yaml": false
+    },
+    "github.copilot.advanced": {
+        "inlineSuggestCount": 1,
+        "listCount": 3
+    }
+}
+{
+    "github.copilot.advanced": {
+        "inlineSuggestCount": 1,
+        "listCount": 3,
+        "delay": 150
+    }
+}
