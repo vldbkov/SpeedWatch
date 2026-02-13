@@ -632,7 +632,13 @@ class InternetSpeedMonitor:
         # Создаем Treeview для журнала
         self.log_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
                                     yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        
+        ###
+        # Настройка тегов для отдельных колонок (красный цвет для конкретных значений)
+        self.log_tree.tag_configure('low_download', foreground='red')
+        self.log_tree.tag_configure('low_upload', foreground='red')
+        self.log_tree.tag_configure('high_ping', foreground='red')
+        self.log_tree.tag_configure('high_jitter', foreground='red')
+        ###        
         # Настройка стиля для Treeview с поддержкой тегов
         style = ttk.Style()
         
@@ -640,9 +646,7 @@ class InternetSpeedMonitor:
         # К сожалению, ttk.Treeview имеет ограничения с цветами, поэтому используем красный текст
         style.configure('Treeview', rowheight=20)
         
-        # Применяем красный цвет для текста в тегах 'low_value'
-        self.log_tree.tag_configure('low_value', foreground='red', background='lightyellow')
-        
+       
         ###        
         # Настройка колонок - все фиксированной ширины, растяжение отключено
         for i, col in enumerate(columns):
@@ -1226,26 +1230,45 @@ class InternetSpeedMonitor:
                 
                 # Вставляем строку
                 item_id = self.log_tree.insert('', 'end', values=formatted_row)
-                
-                # Проверяем, выполняются ли условия для выделения
-                should_highlight = False
+                # Проверяем каждое значение и создаем форматированные строки с возможными тегами
+                tags = []
                 
                 # Проверяем загрузку (ниже на 25%)
                 if row[2] and row[2] < threshold_download:
-                    should_highlight = True
+                    tags.append('low_download')
+                    download_str = f"▼{download_str}"  # Добавляем символ для наглядности
                 
                 # Проверяем отдачу (ниже на 25%)
                 if row[3] and row[3] < threshold_upload:
-                    should_highlight = True
+                    tags.append('low_upload')
+                    upload_str = f"▼{upload_str}"
                 
                 # Проверяем пинг (выше на 25%)
                 if row[4] and row[4] >= threshold_ping:
-                    should_highlight = True
+                    tags.append('high_ping')
+                    ping_str = f"▲{ping_str}"
                 
-                # Применяем тег к строке если выполнено хотя бы одно условие
-                if should_highlight:
-                    self.log_tree.item(item_id, tags=('low_value',))
-            
+                # Проверяем джиттер (выше на 25%)
+                if row[5] and row[5] >= threshold_ping * 1.25:  # Используем тот же порог что и для пинга
+                    tags.append('high_jitter')
+                    jitter_str = f"▲{jitter_str}"
+                
+                # Убираем дубликаты тегов
+                tags = list(set(tags))
+                
+                formatted_row = (
+                    row[0],
+                    formatted_timestamp,
+                    download_str,
+                    upload_str,
+                    ping_str,
+                    jitter_str,
+                    row[6] or "N/A"
+                )
+                
+                # Вставляем строку
+                item_id = self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
+                ###
             conn.close()
             
             # Обновляем статус
