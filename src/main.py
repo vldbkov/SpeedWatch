@@ -1478,9 +1478,9 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
 
-
+    ###
     def export_log(self):
-        """Экспорт журнала в CSV"""
+        """Экспорт журнала в CSV (сырые данные из БД)"""
         try:
             filename = filedialog.asksaveasfilename(
                 defaultextension=".csv",
@@ -1491,17 +1491,17 @@ class InternetSpeedMonitor:
             if filename:
                 conn = sqlite3.connect(self.db_path)
                 cursor = conn.cursor()
-                cursor.execute('SELECT * FROM speed_measurements ORDER BY timestamp DESC')
+                cursor.execute('SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server FROM speed_measurements ORDER BY timestamp DESC')
                 rows = cursor.fetchall()
                 conn.close()
                 
                 import csv
-                with open(filename, 'w', newline='', encoding='utf-8') as f:
+                with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.writer(f)
-                    # Заголовки
-                    writer.writerow(['ID', 'Timestamp', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)', 'Server'])
-                    # Данные
+                    writer.writerow(['ID', 'Timestamp', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)', 'Jitter (ms)', 'Server'])
+                    
                     for row in rows:
+                        # Записываем как есть, без форматирования
                         writer.writerow(row)
                 
                 self.status_var.set(f"Журнал экспортирован: {filename}")
@@ -1511,7 +1511,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка экспорта журнала: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
-
+###
 
     def clear_log(self):
         """Очистка журнала"""
