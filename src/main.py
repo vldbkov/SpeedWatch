@@ -1208,7 +1208,7 @@ class InternetSpeedMonitor:
                 self.avg_upload_var.set("0 Mbps")
                 self.avg_ping_var.set("0 ms")
                 self.avg_jitter_var.set("0 ms")
-            
+###
             # Добавляем данные в таблицу с форматированием
             for row in rows:
                 # Форматируем дату из формата "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
@@ -1228,25 +1228,13 @@ class InternetSpeedMonitor:
                 ping_str = f"{row[4]:.2f}" if row[4] else "N/A"
                 jitter_str = f"{row[5]:.2f}" if row[5] else "N/A"
                 
-                formatted_row = (
-                    row[0],
-                    formatted_timestamp,
-                    download_str,
-                    upload_str,
-                    ping_str,
-                    jitter_str,
-                    row[6] or "N/A"
-                )
-                
-                # Вставляем строку
-                item_id = self.log_tree.insert('', 'end', values=formatted_row)
                 # Проверяем каждое значение и создаем форматированные строки с возможными тегами
                 tags = []
                 
                 # Проверяем загрузку (ниже на 25%)
                 if row[2] and row[2] < threshold_download:
                     tags.append('low_download')
-                    download_str = f"▼{download_str}"  # Добавляем символ для наглядности
+                    download_str = f"▼{download_str}"
                 
                 # Проверяем отдачу (ниже на 25%)
                 if row[3] and row[3] < threshold_upload:
@@ -1259,7 +1247,7 @@ class InternetSpeedMonitor:
                     ping_str = f"▲{ping_str}"
                 
                 # Проверяем джиттер (выше на 25%)
-                if row[5] and row[5] >= threshold_ping * 1.25:  # Используем тот же порог что и для пинга
+                if row[5] and row[5] >= threshold_ping * 1.25:
                     tags.append('high_jitter')
                     jitter_str = f"▲{jitter_str}"
                 
@@ -1276,9 +1264,9 @@ class InternetSpeedMonitor:
                     row[6] or "N/A"
                 )
                 
-                # Вставляем строку
+                # Вставляем строку ТОЛЬКО ОДИН РАЗ
                 item_id = self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
-                ###
+###
             conn.close()
             
             # Обновляем статус
