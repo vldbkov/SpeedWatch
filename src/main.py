@@ -52,9 +52,14 @@ class InternetSpeedMonitor:
         base_width, base_height = 810, 600
         scaled_width = int(base_width * self.dpi_scale)
         scaled_height = int(base_height * self.dpi_scale)
-        
+
+        # Настройка окна
         self.root.title("Internet Speed Monitor")
         self.root.geometry(f"{scaled_width}x{scaled_height}")
+        
+        # Убираем окно из панели задач при сворачивании в трей
+        self.root.attributes('-toolwindow', 0)  # Обычное окно
+        
         self.center_window()
         
         # Установка иконки
@@ -1550,9 +1555,13 @@ class InternetSpeedMonitor:
     def minimize_to_tray(self):
         """Сворачивание в системный трей"""
         if self.minimize_to_tray_var.get():
+            # Скрываем окно
             self.root.withdraw()
+            # Дополнительно скрываем из панели задач
+            self.root.attributes('-alpha', 1.0)  # Восстанавливаем прозрачность если была
+            self.root.update_idletasks()
             self.status_var.set("Ожидание команды")
-            self.logger.info("Приложение свернуто в трей")  # Уже есть
+            self.logger.info("Приложение свернуто в трей")
         else:
             self.quit_app()
 
