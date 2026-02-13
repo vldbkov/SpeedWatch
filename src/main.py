@@ -79,23 +79,28 @@ class InternetSpeedMonitor:
         # Управление консолью
         self.console_visible = False  # Начинаем со скрытой консоли
         self.setup_console()
-        
+        ###
         # Создание интерфейса
         self.create_widgets()
-
+        
         # Устанавливаем начальные даты в фильтре журнала
         first_date = self.get_first_measurement_date()
         self.date_from_entry.set_date(first_date)
         self.date_to_entry.set_date(datetime.now().date())
         
-        # Устанавливаем начальный статус
-        self.status_var.set("Ожидание команды")     
+        # Устанавливаем период "Все время" на вкладке графиков
+        self.period_var.set("Все время")
         
+        # Устанавливаем начальный статус
+        self.status_var.set("Ожидание команды")
         
         # Загружаем время последнего измерения
         last_time = self.get_last_measurement_time()
-        self.last_check_var.set(last_time)        
-             
+        self.last_check_var.set(last_time)
+
+        # Обновляем график с периодом "Все время"
+        self.root.after(500, self.update_graph)  # Небольшая задержка для полной загрузки интерфейса     
+          
         
         # Загрузка настроек
         self.is_first_load = True  # Флаг первого запуска
