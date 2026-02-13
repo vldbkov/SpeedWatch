@@ -1380,14 +1380,14 @@ class InternetSpeedMonitor:
             if upload_vals:
                 ax1.plot(upload_ts, upload_vals, 'r-', label='Отдача', linewidth=2)
             
-            # Добавляем средние значения как пунктирные линии
+            # Добавляем средние значения как пунктирные линии (без текста в легенде)
             if download_valid or upload_valid:
                 time_range = [min(list(download_ts) + list(upload_ts)), 
                              max(list(download_ts) + list(upload_ts))]
                 if avg_download > 0:
-                    ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6, label=f'Средняя загрузка: {avg_download:.1f} Mbps')
+                    ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6)
                 if avg_upload > 0:
-                    ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6, label=f'Средняя отдача: {avg_upload:.1f} Mbps')
+                    ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6)
             
             ax1.set_title('Скорость интернета', fontsize=title_fontsize)
             ax1.set_ylabel('Скорость (Mbps)', fontsize=label_fontsize)
@@ -1405,12 +1405,12 @@ class InternetSpeedMonitor:
             if jitter_vals:
                 ax2.plot(jitter_ts, jitter_vals, color='orange', label='Джиттер', linewidth=2)
             
-            # Добавляем средние значения как пунктирные линии
+            # Добавляем средние значения как пунктирные линии (без текста в легенде)
             if ping_valid or jitter_valid:
                 if avg_ping > 0:
-                    ax2.axhline(y=avg_ping, color='g', linestyle='--', linewidth=1, alpha=0.6, label=f'Средний пинг: {avg_ping:.1f} ms')
+                    ax2.axhline(y=avg_ping, color='g', linestyle='--', linewidth=1, alpha=0.6)
                 if avg_jitter >= 0:
-                    ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6, label=f'Средний джиттер: {avg_jitter:.1f} ms')
+                    ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6)
             
             ax2.set_title('Пинг и Джиттер', fontsize=title_fontsize)
             ax2.set_xlabel('', fontsize=label_fontsize)
