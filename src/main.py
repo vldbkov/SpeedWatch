@@ -1082,6 +1082,7 @@ class InternetSpeedMonitor:
         self.running = False
         self.start_button.config(state='normal')
         self.stop_button.config(state='disabled')
+        self.test_button.config(state='normal')  # Добавить эту строку
         self.status_var.set("Мониторинг остановлен")
         self.next_test_var.set("--:--:--")
         self.logger.info("Мониторинг остановлен")
