@@ -1576,26 +1576,43 @@ class InternetSpeedMonitor:
         self.minimize_to_tray()
         # Обновляем меню трея, чтобы отобразить правильный статус
         self.update_tray_menu()          
-
+    ###
     def quit_app(self):
         """Завершение работы приложения"""
+        self.logger.info("Завершение работы приложения...")
         self.running = False
+        
+        # Останавливаем мониторинг если он запущен
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=1)
         
         # Закрываем иконку в трее
         try:
             if hasattr(self, 'tray_icon'):
                 self.tray_icon.stop()
+                time.sleep(0.5)
+        except Exception as e:
+            self.logger.error(f"Ошибка закрытия иконки трея: {e}")
+        
+        # Закрываем все окна tkinter
+        try:
+            self.root.quit()
+            self.root.destroy()
         except:
             pass
         
-        # Закрываем приложение
-        self.root.quit()
+        # Принудительно завершаем процесс
         self.logger.info("Приложение завершено")
-    ###
+        os._exit(0)
+
     def restart_app(self):
         """Перезапуск приложения"""
         self.logger.info("Перезапуск программы...")        
-       
+        
+        # Останавливаем мониторинг если он запущен
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=1)
+        
         # Закрываем иконку в трее
         try:
             if hasattr(self, 'tray_icon'):
@@ -1604,14 +1621,20 @@ class InternetSpeedMonitor:
             pass
         
         # Закрываем основное окно
-        self.root.quit()
+        try:
+            self.root.quit()
+            self.root.destroy()
+        except:
+            pass
         
         # Перезапускаем программу
         python = sys.executable
         script = os.path.abspath(sys.argv[0])
         subprocess.Popen([python, script])
-        sys.exit()        
-    ###
+        
+        # Завершаем текущий процесс
+        os._exit(0)
+        ###
 
 def check_if_already_running():
     """Проверка через файловую блокировку - не запущено ли уже приложение"""
