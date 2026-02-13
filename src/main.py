@@ -77,6 +77,11 @@ class InternetSpeedMonitor:
         
         # Создание интерфейса
         self.create_widgets()
+
+        # Устанавливаем начальные даты в фильтре журнала
+        first_date = self.get_first_measurement_date()
+        self.date_from_entry.set_date(first_date)
+        self.date_to_entry.set_date(datetime.now().date())
         
         # Устанавливаем начальный статус
         self.status_var.set("Ожидание команды")     
@@ -221,7 +226,35 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка получения времени последнего измерения: {e}")
             return "Нет данных"        
     ##
-
+    def get_first_measurement_date(self):
+        """Получение даты первого измерения из БД"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT timestamp FROM speed_measurements 
+                ORDER BY timestamp ASC LIMIT 1
+            ''')
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result and result[0]:
+                timestamp = result[0]
+                # Парсим дату из "YYYY-MM-DD HH:MM:SS.ffffff"
+                try:
+                    if isinstance(timestamp, str):
+                        dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                        return dt.date()
+                except:
+                    pass
+            
+            # Если нет данных, возвращаем 01.01.2026
+            return datetime(2026, 1, 1).date()
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка получения даты первого измерения: {e}")
+            return datetime(2026, 1, 1).date()
+    ##
     def setup_console(self):
         """Настройка консоли Windows"""
         try:
@@ -844,10 +877,10 @@ class InternetSpeedMonitor:
             
     def reset_date_filter(self):
         """Сброс фильтра по дате"""
-        today = datetime.now()
-        self.date_from_entry.set_date(today)
-        self.date_to_entry.set_date(today)
-        self.update_log()        
+        first_date = self.get_first_measurement_date()
+        self.date_from_entry.set_date(first_date)
+        self.date_to_entry.set_date(datetime.now().date())
+        self.update_log()       
     ###    
 
     def update_autostart(self):
