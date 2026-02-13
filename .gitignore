@@ -52,6 +52,7 @@ build_*.py
 # Игнорировать папку с личными данными и логами
 data/
 quarantine/
+my-dotfiles/
 
 # Данные проекта
 data/
