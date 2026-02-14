@@ -963,16 +963,28 @@ class InternetSpeedMonitor:
             )
             
             app_name = "InternetSpeedMonitor"
-            app_path = os.path.abspath(sys.argv[0])
+            
+            # Путь к pythonw.exe (без окна консоли)
+            python_dir = os.path.dirname(sys.executable)
+            pythonw_path = os.path.join(python_dir, "pythonw.exe")
+            
+            # Проверяем существование pythonw.exe
+            if not os.path.exists(pythonw_path):
+                pythonw_path = sys.executable  # fallback на python.exe
+            
+            # Путь к скрипту
+            script_path = os.path.abspath(sys.argv[0])
             
             if self.auto_start_var.get():
-                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, app_path)
-                self.logger.info("Добавлено в автозапуск")
+                # Формируем команду: pythonw.exe путь_к_скрипту
+                cmd = f'"{pythonw_path}" "{script_path}"'
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
+                self.logger.info(f"Добавлено в автозапуск: {cmd}")
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
                     self.logger.info("Удалено из автозапуска")
-                except:
+                except FileNotFoundError:
                     pass
             
             winreg.CloseKey(key)
@@ -1013,17 +1025,38 @@ class InternetSpeedMonitor:
             
             # Читаем API ключ из .env
             api_key = None
+            # Определяем путь к .env (на уровень выше папки src)
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+            self.logger.info(f"Поиск .env по пути: {env_path}")
+            
             try:
-                with open('.env', 'r', encoding='utf-8') as f:
+                with open(env_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         if line.startswith("OPENSPEEDTEST_API_KEY="):
                             api_key = line.strip().split("=", 1)[1]
                             break
+                if api_key:
+                    self.logger.info(f"API ключ найден")
+                else:
+                    self.logger.error("API ключ не найден в файле .env")
+            except FileNotFoundError:
+                self.logger.error(f"Файл .env не найден по пути: {env_path}")
+                # Пробуем найти в текущей директории
+                try:
+                    with open('.env', 'r', encoding='utf-8') as f:
+                        for line in f:
+                            if line.startswith("OPENSPEEDTEST_API_KEY="):
+                                api_key = line.strip().split("=", 1)[1]
+                                break
+                    if api_key:
+                        self.logger.info(f"API ключ найден в текущей директории")
+                except:
+                    pass
             except Exception as e:
                 self.logger.error(f"Ошибка чтения .env: {e}")
             
             if not api_key:
-                raise Exception("API ключ не найден в файле .env")
+                raise Exception(f"API ключ не найден в файле .env")
             
             # Конфиг для API
             config = {"api_key": api_key}
