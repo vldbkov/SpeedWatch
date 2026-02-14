@@ -19,6 +19,14 @@ import logging
 from tkcalendar import Calendar, DateEntry
 import tempfile
 import psutil
+# Регистрация адаптера для datetime для Python 3.12+
+from datetime import datetime
+import sqlite3
+
+def adapt_datetime(dt):
+    return dt.isoformat()
+
+sqlite3.register_adapter(datetime, adapt_datetime)
 
 # Условный импорт fcntl (только для Unix-систем)
 if sys.platform != 'win32':
@@ -135,6 +143,18 @@ class InternetSpeedMonitor:
         
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
+
+        ###
+        def check_internet_connection(self):
+            """Проверка наличия интернет-соединения"""
+            try:
+                # Пытаемся подключиться к DNS Google
+                import socket
+                socket.create_connection(("8.8.8.8", 53), timeout=3)
+                return True
+            except OSError:
+                return False
+        ###
         
     def center_window(self):
         """Центрирование окна на экране"""
@@ -156,7 +176,18 @@ class InternetSpeedMonitor:
     
     def scale_value(self, value):
         """Масштабирует любое числовое значение в зависимости от DPI."""
-        return int(value * self.dpi_scale)     
+        return int(value * self.dpi_scale)
+
+    ###
+    def check_internet_connection(self):
+        """Проверка наличия интернет-соединения"""
+        try:
+            import socket
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            return True
+        except OSError:
+            return False
+    ###     
 
     def check_tray_icon(self):
         """Проверка что иконка трея запущена"""
@@ -698,19 +729,24 @@ class InternetSpeedMonitor:
         self.interval_var = tk.IntVar(value=60)
         ttk.Spinbox(settings_frame, from_=1, to=1440, textvariable=self.interval_var, width=10).grid(row=0, column=1, padx=10)
         
+        # Длительность теста
+        ttk.Label(settings_frame, text="Длительность теста (сек):").grid(row=1, column=0, sticky='w', pady=10)
+        self.test_duration_var = tk.IntVar(value=10)
+        ttk.Spinbox(settings_frame, from_=5, to=60, textvariable=self.test_duration_var, width=10).grid(row=1, column=1, padx=10)
+        
         # Автозапуск
         self.auto_start_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Автозапуск при старте Windows", 
-                       variable=self.auto_start_var).grid(row=1, column=0, columnspan=2, sticky='w', pady=10)
+                       variable=self.auto_start_var).grid(row=2, column=0, columnspan=2, sticky='w', pady=10)
         
         # Минимализация в трей
         self.minimize_to_tray_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(settings_frame, text="Сворачивать в системный трей", 
-                       variable=self.minimize_to_tray_var).grid(row=2, column=0, columnspan=2, sticky='w', pady=10)
+                       variable=self.minimize_to_tray_var).grid(row=3, column=0, columnspan=2, sticky='w', pady=10)
         
         # Кнопки сохранения настроек
         ttk.Button(settings_frame, text="Сохранить настройки", 
-                  command=self.save_settings).grid(row=3, column=0, pady=20)
+                  command=self.save_settings).grid(row=4, column=0, pady=20)
         
         # Информация о программе
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
@@ -940,6 +976,13 @@ class InternetSpeedMonitor:
     def _perform_speed_test(self):
         """Выполнение теста скорости через OpenSpeedTest"""
         try:
+            # Проверяем интернет-соединение
+            if not self.check_internet_connection():
+                error_msg = "Нет подключения к интернету"
+                self.logger.error(error_msg)
+                self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                return
+
             # Обновляем статус на каждом этапе
             self.root.after(0, lambda: self.status_var.set("Запуск теста скорости через OpenSpeedTest..."))
             self.logger.info("Запуск теста скорости через OpenSpeedTest...")
@@ -982,16 +1025,19 @@ class InternetSpeedMonitor:
             # Получаем пинг и джиттер
             ping = server.get('ping', 0)
             jitter = server.get('jitter', 0)
+
+            # Получаем длительность теста из настроек
+            duration = self.test_duration_var.get()
             
             # Тест скачивания
             self.root.after(0, lambda: self.status_var.set("Тест скачивания..."))
             self.logger.info("Тест скачивания...")
-            download_speed = ost.download_test(server, duration=5, threads=4)
+            download_speed = ost.download_test(server, duration=duration, threads=4)
             
             # Тест загрузки
             self.root.after(0, lambda: self.status_var.set("Тест загрузки..."))
             self.logger.info("Тест загрузки...")
-            upload_speed = ost.upload_test(server, duration=5, threads=4)
+            upload_speed = ost.upload_test(server, duration=duration, threads=4)
             
             # Сохраняем результаты
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
@@ -1007,8 +1053,8 @@ class InternetSpeedMonitor:
             
         except Exception as e:
             self.logger.error(f"Ошибка теста скорости: {e}")
-            self.root.after(0, lambda: self._update_ui_with_error(str(e)))
-
+            error_msg = str(e)
+            self.root.after(0, lambda: self._update_ui_with_error(error_msg))
     ###
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
