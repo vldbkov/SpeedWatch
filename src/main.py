@@ -974,19 +974,19 @@ class InternetSpeedMonitor:
 
     ###
     def _perform_speed_test(self):
-        """Выполнение теста скорости через OpenSpeedTest"""
+        """Выполнение теста скорости через OpenSpeedTest с проверками соединения"""
         try:
-            # Проверяем интернет-соединение
+            # Проверяем интернет-соединение перед началом
             if not self.check_internet_connection():
                 error_msg = "Нет подключения к интернету"
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
                 return
-
-            # Обновляем статус на каждом этапе
+            
+            # Обновляем статус
             self.root.after(0, lambda: self.status_var.set("Запуск теста скорости через OpenSpeedTest..."))
             self.logger.info("Запуск теста скорости через OpenSpeedTest...")
-            time.sleep(0.5)  # Небольшая задержка для отображения
+            time.sleep(0.5)
             
             # Импортируем из нашего скрипта
             import openspeedtest as ost
@@ -1008,6 +1008,10 @@ class InternetSpeedMonitor:
             # Конфиг для API
             config = {"api_key": api_key}
             
+            # Проверка соединения перед получением серверов
+            if not self.check_internet_connection():
+                raise Exception("Потеряно соединение с интернетом")
+            
             # Получаем серверы
             self.root.after(0, lambda: self.status_var.set("Получение списка серверов..."))
             self.logger.info("Получение списка серверов...")
@@ -1016,36 +1020,70 @@ class InternetSpeedMonitor:
             if not servers:
                 raise Exception("Не удалось получить список серверов")
             
+            # Проверка соединения перед поиском сервера
+            if not self.check_internet_connection():
+                raise Exception("Потеряно соединение с интернетом")
+            
             # Находим лучший сервер
             self.root.after(0, lambda: self.status_var.set("Поиск лучшего сервера..."))
             self.logger.info("Поиск лучшего сервера...")
-            server = ost.find_best_server(servers)
+            
+            # Запускаем поиск сервера с таймаутом
+            import concurrent.futures
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(ost.find_best_server, servers)
+                try:
+                    server = future.result(timeout=30)  # Таймаут 30 секунд
+                except concurrent.futures.TimeoutError:
+                    raise Exception("Поиск сервера занял слишком много времени. Возможно, проблемы с сетью.")
+                except Exception as e:
+                    raise Exception(f"Ошибка при поиске сервера: {e}")
+
             server_name = server['name']
             
             # Получаем пинг и джиттер
             ping = server.get('ping', 0)
             jitter = server.get('jitter', 0)
-
+            
             # Получаем длительность теста из настроек
             duration = self.test_duration_var.get()
+            
+            # Проверка соединения перед тестом скачивания
+            if not self.check_internet_connection():
+                raise Exception("Потеряно соединение с интернетом перед тестом скачивания")
             
             # Тест скачивания
             self.root.after(0, lambda: self.status_var.set("Тест скачивания..."))
             self.logger.info("Тест скачивания...")
-            download_speed = ost.download_test(server, duration=duration, threads=4)
+            try:
+                download_speed = ost.download_test(server, duration=duration, threads=4)
+            except Exception as e:
+                if "connection" in str(e).lower() or "timeout" in str(e).lower():
+                    raise Exception("Соединение прервано во время теста скачивания")
+                raise
+            
+            # Проверка соединения перед тестом загрузки
+            if not self.check_internet_connection():
+                raise Exception("Потеряно соединение с интернетом перед тестом загрузки")
             
             # Тест загрузки
             self.root.after(0, lambda: self.status_var.set("Тест загрузки..."))
             self.logger.info("Тест загрузки...")
-            upload_speed = ost.upload_test(server, duration=duration, threads=4)
+            try:
+                upload_speed = ost.upload_test(server, duration=duration, threads=4)
+            except Exception as e:
+                if "connection" in str(e).lower() or "timeout" in str(e).lower():
+                    raise Exception("Соединение прервано во время теста загрузки")
+                raise
             
             # Сохраняем результаты
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
             
-            # Обновляем интерфейс с завершающим сообщением
+            # Обновляем интерфейс
             self.root.after(0, lambda: self._update_ui_with_results_and_status(
                 download_speed, upload_speed, ping, jitter, server_name,
-                f"Тест завершен"
+                "Тест завершен"
             ))
             
             self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
