@@ -342,6 +342,16 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка скрытия консоли при старте: {e}")
 
+    def close_console(self):
+        """Закрыть консольное окно при выходе"""
+        try:
+            import ctypes
+            if hasattr(self, 'hwnd') and self.hwnd:
+                # Отправляем сообщение на закрытие окна
+                ctypes.windll.user32.PostMessageW(self.hwnd, 0x0010, 0, 0)  # WM_CLOSE = 0x0010
+                self.logger.info("Команда на закрытие консоли отправлена")
+        except Exception as e:
+            self.logger.error(f"Ошибка закрытия консоли: {e}")
 
     def toggle_console(self, icon, item):
         """Переключение видимости консоли"""
@@ -365,7 +375,17 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка переключения консоли: {e}")
     ###
-
+    def hide_console(self):
+        """Принудительно скрыть консольное окно"""
+        try:
+            import ctypes
+            if hasattr(self, 'hwnd') and self.hwnd:
+                user32 = ctypes.WinDLL('user32', use_last_error=True)
+                user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
+                self.logger.info("Консоль скрыта при выходе")
+        except Exception as e:
+            self.logger.error(f"Ошибка скрытия консоли: {e}")
+    ###
     def update_tray_menu(self):
         """Обновление меню в трее"""
         try:
@@ -1654,6 +1674,9 @@ class InternetSpeedMonitor:
         self.logger.info("Завершение работы приложения...")
         self.running = False
         
+        # Закрываем консоль
+        self.close_console()
+        
         # Останавливаем мониторинг если он запущен
         if self.monitor_thread and self.monitor_thread.is_alive():
             self.monitor_thread.join(timeout=1)
@@ -1679,7 +1702,10 @@ class InternetSpeedMonitor:
 
     def restart_app(self):
         """Перезапуск приложения"""
-        self.logger.info("Перезапуск программы...")        
+        self.logger.info("Перезапуск программы...")
+        
+        # Закрываем консоль
+        self.close_console()
         
         # Останавливаем мониторинг если он запущен
         if self.monitor_thread and self.monitor_thread.is_alive():
@@ -1706,7 +1732,6 @@ class InternetSpeedMonitor:
         
         # Завершаем текущий процесс
         os._exit(0)
-        ###
 
 def check_if_already_running():
     """Проверка через файловую блокировку - не запущено ли уже приложение"""
