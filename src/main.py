@@ -165,6 +165,8 @@ class InternetSpeedMonitor:
         self.is_first_load = True  # Флаг первого запуска
         self.load_settings()
         self.is_first_load = False  # Сбрасываем после загрузки
+        self.update_log()         # Обновляем журнал принудительно
+       
         
         # Создание меню для трея
         self.create_tray_icon()
