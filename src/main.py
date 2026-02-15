@@ -1515,7 +1515,7 @@ class InternetSpeedMonitor:
                        ha='center', va='center', transform=ax.transAxes)
                 self.canvas.draw()
                 return
-            
+###            
             # Подготавливаем данные
             timestamps = [row[0] for row in data]
             download_speeds = [row[1] for row in data]
@@ -1530,21 +1530,30 @@ class InternetSpeedMonitor:
                 except ValueError:
                     timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
             
-            # Фильтруем N/A значения (None, 0 или пустые)
-            # Для скорости загрузки/отдачи
+            # Фильтруем N/A значения (None, 0 или пустые) для всех метрик
             download_valid = [(t, v) for t, v in zip(timestamps, download_speeds) if v and v > 0]
             upload_valid = [(t, v) for t, v in zip(timestamps, upload_speeds) if v and v > 0]
-            # Для пинга и джиттера
-            ping_valid = [(t, v) for t, v in zip(timestamps, pings) if v and v > 0]
-            jitter_valid = [(t, v) for t, v in zip(timestamps, jitters) if v and v >= 0]
+            ping_valid_all = [(t, v) for t, v in zip(timestamps, pings) if v and v > 0]
+            jitter_valid_all = [(t, v) for t, v in zip(timestamps, jitters) if v and v >= 0]
             
-            # Вычисляем средние значения
+            # Вычисляем средние для всех метрик (используем все валидные данные)
             avg_download = sum(v for _, v in download_valid) / len(download_valid) if download_valid else 0
             avg_upload = sum(v for _, v in upload_valid) / len(upload_valid) if upload_valid else 0
-            avg_ping = sum(v for _, v in ping_valid) / len(ping_valid) if ping_valid else 0
-            avg_jitter = sum(v for _, v in jitter_valid) / len(jitter_valid) if jitter_valid else 0
+            avg_ping = sum(v for _, v in ping_valid_all) / len(ping_valid_all) if ping_valid_all else 0
+            avg_jitter = sum(v for _, v in jitter_valid_all) / len(jitter_valid_all) if jitter_valid_all else 0
             
-            # Разделяем обратно на timestamps и values из отфильтрованных данных
+            # Фильтруем выбросы ТОЛЬКО для отображения на графиках пинга и джиттера
+            if ping_valid_all:
+                ping_valid = [(t, v) for t, v in ping_valid_all if v <= avg_ping * 3]
+            else:
+                ping_valid = []
+            
+            if jitter_valid_all:
+                jitter_valid = [(t, v) for t, v in jitter_valid_all if v <= avg_jitter * 3]
+            else:
+                jitter_valid = []
+            
+            # Разделяем обратно на timestamps и values для отображения
             if download_valid:
                 download_ts, download_vals = zip(*download_valid)
             else:
@@ -1564,7 +1573,7 @@ class InternetSpeedMonitor:
                 jitter_ts, jitter_vals = zip(*jitter_valid)
             else:
                 jitter_ts, jitter_vals = [], []
-            
+###            
             # Создаем графики
             ax1 = self.fig.add_subplot(211)
             ax2 = self.fig.add_subplot(212)
