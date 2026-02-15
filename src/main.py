@@ -23,6 +23,45 @@ import psutil
 from datetime import datetime
 import sqlite3
 
+import sys
+import traceback
+
+def crash_handler(exctype, value, tb):
+    """Обработчик критических ошибок"""
+    with open("crash_detailed.log", "w", encoding="utf-8") as f:
+        f.write(f"Type: {exctype.__name__}\n")
+        f.write(f"Value: {value}\n")
+        f.write("Traceback:\n")
+        traceback.print_tb(tb, file=f)
+    # Вызываем стандартный обработчик
+    sys.__excepthook__(exctype, value, tb)
+
+sys.excepthook = crash_handler
+
+def global_exception_handler(exctype, value, tb):
+    """Глобальный обработчик исключений"""
+    error_msg = f"Необработанное исключение: {exctype.__name__}: {value}\n"
+    error_msg += "".join(traceback.format_tb(tb))
+    
+    # Записываем в файл
+    with open("crash.log", "w", encoding="utf-8") as f:
+        f.write(error_msg)
+    
+    # Показываем сообщение
+    try:
+        import tkinter.messagebox as mb
+        mb.showerror("Критическая ошибка", 
+                    f"Программа аварийно завершилась.\n\n"
+                    f"Ошибка: {value}\n\n"
+                    f"Подробности в файле crash.log")
+    except:
+        print(error_msg)
+    
+    # Вызываем стандартный обработчик
+    sys.__excepthook__(exctype, value, tb)
+
+sys.excepthook = global_exception_handler
+
 def adapt_datetime(dt):
     return dt.isoformat()
 
@@ -54,6 +93,18 @@ def get_dpi_scale_factor():
 class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
+        print("[DEBUG] InternetSpeedMonitor __init__ started")
+        try:
+            self.dpi_scale = get_dpi_scale_factor()
+            # ... остальной код метода
+        except Exception as e:
+            print(f"[DEBUG] Ошибка в __init__: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+
+
         self.dpi_scale = get_dpi_scale_factor()
         
         # Увеличенное разрешение для современных мониторов
@@ -125,8 +176,10 @@ class InternetSpeedMonitor:
         if self.auto_start_var.get():
             self.start_monitoring()
         
-        # Сразу сворачиваем в трей без показа окна
-        self.minimize_to_tray()
+        # Сворачиваем в трей если включена настройка
+        if self.minimize_to_tray_var.get():
+            self.minimize_to_tray()
+
         # Обновляем меню трея, чтобы текст пункта соответствовал текущему состоянию окна
         try:
             self.update_tray_menu()
@@ -144,17 +197,6 @@ class InternetSpeedMonitor:
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
 
-        ###
-        def check_internet_connection(self):
-            """Проверка наличия интернет-соединения"""
-            try:
-                # Пытаемся подключиться к DNS Google
-                import socket
-                socket.create_connection(("8.8.8.8", 53), timeout=3)
-                return True
-            except OSError:
-                return False
-        ###
         
     def center_window(self):
         """Центрирование окна на экране"""
@@ -749,24 +791,19 @@ class InternetSpeedMonitor:
         self.interval_var = tk.IntVar(value=60)
         ttk.Spinbox(settings_frame, from_=1, to=1440, textvariable=self.interval_var, width=10).grid(row=0, column=1, padx=10)
         
-        # Длительность теста
-        ttk.Label(settings_frame, text="Длительность теста (сек):").grid(row=1, column=0, sticky='w', pady=10)
-        self.test_duration_var = tk.IntVar(value=10)
-        ttk.Spinbox(settings_frame, from_=5, to=60, textvariable=self.test_duration_var, width=10).grid(row=1, column=1, padx=10)
-        
         # Автозапуск
         self.auto_start_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Автозапуск при старте Windows", 
-                       variable=self.auto_start_var).grid(row=2, column=0, columnspan=2, sticky='w', pady=10)
+                       variable=self.auto_start_var).grid(row=1, column=0, columnspan=2, sticky='w', pady=10)
         
         # Минимализация в трей
         self.minimize_to_tray_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(settings_frame, text="Сворачивать в системный трей", 
-                       variable=self.minimize_to_tray_var).grid(row=3, column=0, columnspan=2, sticky='w', pady=10)
+                       variable=self.minimize_to_tray_var).grid(row=2, column=0, columnspan=2, sticky='w', pady=10)
         
         # Кнопки сохранения настроек
         ttk.Button(settings_frame, text="Сохранить настройки", 
-                  command=self.save_settings).grid(row=4, column=0, pady=20)
+                  command=self.save_settings).grid(row=3, column=0, pady=20)
         
         # Информация о программе
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
@@ -797,6 +834,9 @@ class InternetSpeedMonitor:
             # Запускаем иконку в трее в отдельном потоке
             self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
             self.tray_thread.start()
+            # Даем время на запуск потока
+            time.sleep(0.2)
+
             self.logger.info("Иконка трея запущена")
         except Exception as e:
             self.logger.error(f"Ошибка создания иконки трея: {e}")
@@ -1099,8 +1139,7 @@ class InternetSpeedMonitor:
             ping = server.get('ping', 0)
             jitter = server.get('jitter', 0)
             
-            # Получаем длительность теста из настроек
-            duration = self.test_duration_var.get()
+            duration = 10  # фиксированная длительность теста
             
             # Проверка соединения перед тестом скачивания
             if not self.check_internet_connection():
@@ -1684,22 +1723,18 @@ class InternetSpeedMonitor:
 
     def minimize_to_tray(self):
         """Сворачивание в системный трей"""
-        if self.minimize_to_tray_var.get():
-            # Скрываем окно
-            self.root.withdraw()
-            # Дополнительно скрываем из панели задач
-            self.root.attributes('-alpha', 1.0)  # Восстанавливаем прозрачность если была
-            self.root.update_idletasks()
-            self.status_var.set("Ожидание команды")
-            self.logger.info("Приложение свернуто в трей")
-        else:
-            self.quit_app()
+        # Просто сворачиваем окно, независимо от настройки
+        # Настройка влияет только на автоматическое сворачивание при запуске
+        self.root.withdraw()
+        self.root.attributes('-alpha', 1.0)
+        self.root.update_idletasks()
+        self.status_var.set("Ожидание команды")
+        self.logger.info("Приложение свернуто в трей")
 
     def handle_window_close(self):
         """Обработка закрытия окна пользователем (крестик)"""
-        # Сворачиваем в трей (будет записано "Приложение свернуто в трей")
+        # Всегда сворачиваем в трей при нажатии на крестик
         self.minimize_to_tray()
-        # Обновляем меню трея, чтобы отобразить правильный статус
         self.update_tray_menu()          
     ###
     def quit_app(self):
@@ -1714,11 +1749,12 @@ class InternetSpeedMonitor:
         if self.monitor_thread and self.monitor_thread.is_alive():
             self.monitor_thread.join(timeout=1)
         
-        # Закрываем иконку в трее
+        # Закрываем иконку в трее (с проверкой)
         try:
             if hasattr(self, 'tray_icon'):
-                self.tray_icon.stop()
+                # Даем время иконке запуститься
                 time.sleep(0.5)
+                self.tray_icon.stop()
         except Exception as e:
             self.logger.error(f"Ошибка закрытия иконки трея: {e}")
         
@@ -1815,18 +1851,40 @@ def check_if_already_running():
 def main():
     global _lock_file
     
-    # Проверка через файловую блокировку
-    if check_if_already_running():
-        root = tk.Tk()
-        root.withdraw()  # Скрываем основное окно
-        messagebox.showwarning("Внимание", "Приложение уже запущено!")
-        root.destroy()
-        return
-    
     try:
+        # Проверка через файловую блокировку
+        if check_if_already_running():
+            root = tk.Tk()
+            root.withdraw()  # Скрываем основное окно
+            messagebox.showwarning("Внимание", "Приложение уже запущено!")
+            root.destroy()
+            return
+        
         root = tk.Tk()
         app = InternetSpeedMonitor(root)
         root.mainloop()
+        
+    except Exception as e:
+        # Записываем ошибку в файл
+        error_msg = f"Критическая ошибка: {e}\n"
+        error_msg += "".join(traceback.format_exc())
+        
+        with open("crash_error.log", "w", encoding="utf-8") as f:
+            f.write(error_msg)
+        
+        # Пытаемся показать сообщение пользователю
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Критическая ошибка", 
+                                f"Программа аварийно завершилась.\n\n"
+                                f"Ошибка: {e}\n\n"
+                                f"Подробности в файле crash_error.log")
+            root.destroy()
+        except:
+            print(error_msg)
+            input("Нажмите Enter для выхода...")
+        
     finally:
         # Гарантированное освобождение лока при выходе
         if _lock_file:
