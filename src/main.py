@@ -1775,27 +1775,6 @@ class InternetSpeedMonitor:
         """Перезапуск приложения"""
         self.logger.info("Перезапуск программы...")
         
-        # Закрываем консоль
-        self.close_console()
-        
-        # Останавливаем мониторинг если он запущен
-        if self.monitor_thread and self.monitor_thread.is_alive():
-            self.monitor_thread.join(timeout=1)
-        
-        # Закрываем иконку в трее
-        try:
-            if hasattr(self, 'tray_icon'):
-                self.tray_icon.stop()
-        except:
-            pass
-        
-        # Закрываем основное окно
-        try:
-            self.root.quit()
-            self.root.destroy()
-        except:
-            pass
-        
         # Перезапускаем программу
         python = sys.executable
         script = os.path.abspath(sys.argv[0])
