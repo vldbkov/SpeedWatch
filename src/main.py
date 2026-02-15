@@ -128,6 +128,7 @@ class InternetSpeedMonitor:
             self.create_icon()
         
         self.running = False
+        self.test_in_progress = False  # Флаг выполнения теста        
         self.monitor_thread = None
         self.db_path = "../data/internet_speed.db"
         self.lock_file = None
@@ -1036,6 +1037,11 @@ class InternetSpeedMonitor:
     ###
     def run_speed_test(self):
         """Запуск теста скорости интернета"""
+        if self.test_in_progress:  # Если тест уже выполняется
+            self.logger.warning("Тест уже выполняется, пропускаем")
+            return
+            
+        self.test_in_progress = True
         self.status_var.set("Выполняется тест скорости...")
         self.test_button.config(state='disabled')
         
@@ -1126,14 +1132,26 @@ class InternetSpeedMonitor:
             # Запускаем поиск сервера с таймаутом
             import concurrent.futures
             
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(ost.find_best_server, servers)
+            # Поиск сервера с увеличенным таймаутом и повторными попытками
+            server = None
+            for attempt in range(3):  # 3 попытки
                 try:
-                    server = future.result(timeout=30)  # Таймаут 30 секунд
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(ost.find_best_server, servers)
+                        server = future.result(timeout=45)  # Увеличили до 45 секунд
+                        break  # Успешно нашли, выходим из цикла
                 except concurrent.futures.TimeoutError:
-                    raise Exception("Поиск сервера занял слишком много времени. Возможно, проблемы с сетью.")
+                    if attempt < 2:  # Если не последняя попытка
+                        self.logger.warning(f"Попытка {attempt + 1}/3 поиска сервера не удалась (таймаут), пробуем снова...")
+                        time.sleep(5)
+                    else:
+                        raise Exception("Не удалось найти сервер после 3 попыток. Проверьте подключение к интернету.")
                 except Exception as e:
-                    raise Exception(f"Ошибка при поиске сервера: {e}")
+                    if attempt < 2:
+                        self.logger.warning(f"Попытка {attempt + 1}/3 поиска сервера не удалась: {e}")
+                        time.sleep(5)
+                    else:
+                        raise Exception(f"Ошибка при поиске сервера: {e}")
 
             server_name = server['name']
             
@@ -1182,11 +1200,12 @@ class InternetSpeedMonitor:
             
             self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
                            f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms, Jitter={jitter:.2f} ms")
-            
+            self.test_in_progress = False            
         except Exception as e:
             self.logger.error(f"Ошибка теста скорости: {e}")
             error_msg = str(e)
             self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+            self.test_in_progress = False
     ###
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
