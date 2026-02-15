@@ -22,9 +22,20 @@ import psutil
 # Регистрация адаптера для datetime для Python 3.12+
 from datetime import datetime
 import sqlite3
-
 import sys
 import traceback
+
+# Определяем корневую директорию проекта
+if getattr(sys, 'frozen', False):
+    # Запуск из exe
+    base_dir = os.path.dirname(sys.executable)
+else:
+    # Запуск из скрипта - поднимаемся на уровень выше src
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Меняем рабочую директорию
+os.chdir(base_dir)
+print(f"[AUTOSTART] Установлена рабочая директория: {os.getcwd()}")
 
 def crash_handler(exctype, value, tb):
     """Обработчик критических ошибок"""
@@ -93,17 +104,23 @@ def get_dpi_scale_factor():
 class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
+
+        # Определяем корневую директорию проекта
+        if getattr(sys, 'frozen', False):
+            self.base_dir = os.path.dirname(sys.executable)
+        else:
+            # Запуск из скрипта - поднимаемся на уровень выше src
+            self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
         print("[DEBUG] InternetSpeedMonitor __init__ started")
         try:
             self.dpi_scale = get_dpi_scale_factor()
-            # ... остальной код метода
+
         except Exception as e:
             print(f"[DEBUG] Ошибка в __init__: {e}")
             import traceback
             traceback.print_exc()
             raise
-
-
 
         self.dpi_scale = get_dpi_scale_factor()
         
@@ -130,10 +147,25 @@ class InternetSpeedMonitor:
         self.running = False
         self.test_in_progress = False  # Флаг выполнения теста        
         self.monitor_thread = None
-        self.db_path = "../data/internet_speed.db"
+###
+        # Определяем корневую директорию проекта
+        if getattr(sys, 'frozen', False):
+            self.base_dir = os.path.dirname(sys.executable)
+        else:
+            self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Путь к папке data
+        data_dir = os.path.join(self.base_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        
+        self.db_path = os.path.join(self.base_dir, "data", "internet_speed.db")
+
         self.lock_file = None
         self.lock_file_path = os.path.join(tempfile.gettempdir(), "internet_monitor.lock")
-        self.setup_logging()
+        self.setup_logging() # СНАЧАЛА настраиваем логирование
+
+        self.logger.info(f"Base directory: {self.base_dir}")         # ПОТОМ используем logger
+
         self.setup_database()
         
         # Управление консолью
@@ -243,15 +275,18 @@ class InternetSpeedMonitor:
 
     def setup_logging(self):
         """Настройка логирования"""
+        log_path = os.path.join(self.base_dir, "data", "speed_monitor.log")
+        
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('../data/speed_monitor.log'),
+                logging.FileHandler(log_path),
                 logging.StreamHandler()
             ]
         )
         self.logger = logging.getLogger(__name__)
+        self.logger.info(f"Логирование настроено. Файл лога: {log_path}")
 
 
     def setup_database(self):
@@ -1007,22 +1042,35 @@ class InternetSpeedMonitor:
             
             app_name = "InternetSpeedMonitor"
             
-            # Путь к pythonw.exe (без окна консоли)
+            # Определяем путь к pythonw.exe (без окна консоли)
             python_dir = os.path.dirname(sys.executable)
             pythonw_path = os.path.join(python_dir, "pythonw.exe")
             
-            # Проверяем существование pythonw.exe
+            # Если pythonw.exe не найден, используем python.exe
             if not os.path.exists(pythonw_path):
-                pythonw_path = sys.executable  # fallback на python.exe
+                pythonw_path = sys.executable
             
-            # Путь к скрипту
+            # Путь к скрипту (берем абсолютный путь)
             script_path = os.path.abspath(sys.argv[0])
             
+            # Путь к рабочей директории (корень проекта)
+            working_dir = os.path.dirname(os.path.dirname(script_path))
+            
             if self.auto_start_var.get():
-                # Формируем команду: pythonw.exe путь_к_скрипту
+                # Формируем команду с указанием рабочей директории
                 cmd = f'"{pythonw_path}" "{script_path}"'
                 winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
                 self.logger.info(f"Добавлено в автозапуск: {cmd}")
+                
+                # Проверяем что создалось
+                check_key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Run",
+                    0, winreg.KEY_READ
+                )
+                value, regtype = winreg.QueryValueEx(check_key, app_name)
+                winreg.CloseKey(check_key)
+                self.logger.info(f"Значение в реестре: {value}")
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
@@ -1067,14 +1115,39 @@ class InternetSpeedMonitor:
             self.root.after(0, lambda: self.status_var.set("Запуск теста скорости через OpenSpeedTest..."))
             self.logger.info("Запуск теста скорости через OpenSpeedTest...")
             time.sleep(0.5)
+###            
+            # Импортируем из нашего скрипта с повторными попытками
+            import_attempts = 3
+            ost = None
+            for attempt in range(import_attempts):
+                try:
+                    import openspeedtest as ost
+                    self.logger.info(f"✓ openspeedtest успешно импортирован (попытка {attempt + 1})")
+                    # Проверим основные функции
+                    self.logger.info(f"  Доступные функции: {[f for f in dir(ost) if not f.startswith('_')]}")
+                    break
+                except ImportError as e:
+                    if attempt < import_attempts - 1:
+                        self.logger.warning(f"Попытка {attempt + 1}/{import_attempts} импорта не удалась, ждем 2 секунды...")
+                        time.sleep(2)
+                    else:
+                        self.logger.error(f"✗ Ошибка импорта openspeedtest после {import_attempts} попыток: {e}")
+                        raise Exception("Модуль openspeedtest не установлен. Выполните: pip install openspeedtest")
+                except Exception as e:
+                    if attempt < import_attempts - 1:
+                        self.logger.warning(f"Попытка {attempt + 1}/{import_attempts} импорта не удалась: {e}")
+                        time.sleep(2)
+                    else:
+                        self.logger.error(f"✗ Другая ошибка при импорте: {e}")
+                        raise
             
-            # Импортируем из нашего скрипта
-            import openspeedtest as ost
-            
+            if ost is None:
+                raise Exception("Не удалось импортировать openspeedtest")
+###            
             # Читаем API ключ из .env
             api_key = None
-            # Определяем путь к .env (на уровень выше папки src)
-            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+            # Определяем путь к .env
+            env_path = os.path.join(self.base_dir, ".env")
             self.logger.info(f"Поиск .env по пути: {env_path}")
             
             try:
@@ -1083,10 +1156,13 @@ class InternetSpeedMonitor:
                         if line.startswith("OPENSPEEDTEST_API_KEY="):
                             api_key = line.strip().split("=", 1)[1]
                             break
+                
                 if api_key:
-                    self.logger.info(f"API ключ найден")
+                    self.logger.info(f"API ключ найден в {env_path}")
+                    self.logger.info(f"Длина ключа: {len(api_key)}")
                 else:
                     self.logger.error("API ключ не найден в файле .env")
+                    
             except FileNotFoundError:
                 self.logger.error(f"Файл .env не найден по пути: {env_path}")
                 # Пробуем найти в текущей директории
@@ -1098,13 +1174,17 @@ class InternetSpeedMonitor:
                                 break
                     if api_key:
                         self.logger.info(f"API ключ найден в текущей директории")
-                except:
-                    pass
+                        self.logger.info(f"Длина ключа: {len(api_key)}")
+                except Exception as e2:
+                    self.logger.error(f"Ошибка чтения .env в текущей директории: {e2}")
+                    
             except Exception as e:
                 self.logger.error(f"Ошибка чтения .env: {e}")
             
+            self.logger.info(f"API ключ прочитан: {'да' if api_key else 'нет'}")
+            
             if not api_key:
-                raise Exception(f"API ключ не найден в файле .env")
+                raise Exception("API ключ не найден в файле .env")
             
             # Конфиг для API
             config = {"api_key": api_key}
@@ -1116,10 +1196,32 @@ class InternetSpeedMonitor:
             # Получаем серверы
             self.root.after(0, lambda: self.status_var.set("Получение списка серверов..."))
             self.logger.info("Получение списка серверов...")
+###
             servers = ost.fetch_servers_from_api(config)
+            
+            self.logger.info(f"Получено серверов: {len(servers) if servers else 0}")
+            
+            # Создаем URL для серверов, у которых его нет
+            if servers:
+                for s in servers:
+                    if not s.get('url') and s.get('host'):
+                        # Формируем URL из host
+                        host = s.get('host')
+                        s['url'] = f"http://{host}/speedtest/"
+                        self.logger.info(f"Создан URL для {s.get('name')}: {s['url']}")
+                    elif not s.get('url') and not s.get('host'):
+                        self.logger.warning(f"Сервер {s.get('name')} не имеет ни URL, ни host")
             
             if not servers:
                 raise Exception("Не удалось получить список серверов")
+            
+            # Выведем первые несколько серверов для диагностики
+            for i, s in enumerate(servers[:3]):
+                self.logger.info(f"Сервер {i+1}: {s.get('name')} - {s.get('host')} - URL: {s.get('url')}")
+###            
+            # Выведем первые несколько серверов для диагностики
+            for i, s in enumerate(servers[:3]):
+                self.logger.info(f"Сервер {i+1}: {s.get('name')} - {s.get('host')}")
             
             # Проверка соединения перед поиском сервера
             if not self.check_internet_connection():
@@ -1129,13 +1231,11 @@ class InternetSpeedMonitor:
             self.root.after(0, lambda: self.status_var.set("Поиск лучшего сервера..."))
             self.logger.info("Поиск лучшего сервера...")
             
-            # Запускаем поиск сервера с таймаутом
-            import concurrent.futures
-            
             # Поиск сервера с увеличенным таймаутом и повторными попытками
             server = None
             for attempt in range(3):  # 3 попытки
                 try:
+                    import concurrent.futures
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(ost.find_best_server, servers)
                         server = future.result(timeout=45)  # Увеличили до 45 секунд
@@ -1154,6 +1254,49 @@ class InternetSpeedMonitor:
                         raise Exception(f"Ошибка при поиске сервера: {e}")
 
             server_name = server['name']
+###
+            # Проверка URL сервера
+            server_url = server.get('url')
+            if not server_url:
+                self.logger.error(f"URL сервера не найден для {server.get('name')}, пробуем создать из host...")
+                
+                # Пробуем создать URL из host текущего сервера
+                if server.get('host'):
+                    server_url = f"http://{server.get('host')}/speedtest/"
+                    server['url'] = server_url
+                    self.logger.info(f"Создан URL для текущего сервера: {server_url}")
+                else:
+                    # Если у текущего сервера нет host, ищем любой сервер с host
+                    self.logger.info("Ищем альтернативный сервер с host...")
+                    found_server = None
+                    for alt_server in servers:
+                        if alt_server.get('host'):
+                            found_server = alt_server
+                            server_url = f"http://{alt_server.get('host')}/speedtest/"
+                            alt_server['url'] = server_url
+                            server = alt_server
+                            self.logger.info(f"Найден альтернативный сервер: {alt_server.get('name')} с host {alt_server.get('host')}")
+                            self.logger.info(f"Создан URL: {server_url}")
+                            break
+                    
+                    if not found_server:
+                        # Если ни у одного сервера нет host, используем первый сервер
+                        self.logger.warning("Ни один сервер не имеет host, пробуем использовать первый сервер")
+                        server = servers[0] if servers else None
+                        if not server:
+                            raise Exception("Нет доступных серверов")
+                        # Для первого сервера тоже пытаемся создать URL, если есть host
+                        if server.get('host'):
+                            server_url = f"http://{server.get('host')}/speedtest/"
+                            server['url'] = server_url
+                        else:
+                            server_url = None
+                    
+            if not server_url:
+                raise Exception(f"Не удалось получить или создать URL для сервера {server.get('name')}")
+###
+            self.logger.info(f"Выбран сервер: {server.get('name')}")
+            self.logger.info(f"URL сервера: {server.get('url')}")
             
             # Получаем пинг и джиттер
             ping = server.get('ping', 0)
@@ -1200,7 +1343,8 @@ class InternetSpeedMonitor:
             
             self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
                            f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms, Jitter={jitter:.2f} ms")
-            self.test_in_progress = False            
+            self.test_in_progress = False
+            
         except Exception as e:
             self.logger.error(f"Ошибка теста скорости: {e}")
             error_msg = str(e)
@@ -1815,10 +1959,39 @@ def check_if_already_running():
     """Проверка через файловую блокировку - не запущено ли уже приложение"""
     global _lock_file
     
+    print(f"[DEBUG] Текущий PID: {os.getpid()}")
+    
+    # Проверяем существующий файл лока
+    if os.path.exists(_lock_file_path):
+        try:
+            with open(_lock_file_path, 'r') as f:
+                old_pid = f.read().strip()
+            print(f"[DEBUG] Найден файл лока с PID: {old_pid}")
+            
+            # Проверяем, существует ли процесс с этим PID
+            try:
+                os.kill(int(old_pid), 0)  # Сигнал 0 только проверяет существование
+                print(f"[DEBUG] Процесс {old_pid} существует")
+            except OSError:
+                print(f"[DEBUG] Процесс {old_pid} не существует, удаляем старый лок")
+                os.remove(_lock_file_path)
+        except:
+            pass
+    
+    # Даем время предыдущему экземпляру полностью завершиться
+    time.sleep(1)
+    
     try:
         if sys.platform == 'win32':
             import msvcrt
             print(f"[DEBUG] Попытка захватить файловый лок: {_lock_file_path}")
+            
+            # Проверяем время создания файла лока
+            if os.path.exists(_lock_file_path):
+                file_time = os.path.getmtime(_lock_file_path)
+                if time.time() - file_time < 2:  # Если файл создан менее 2 секунд назад
+                    print(f"[DEBUG] Файл лока слишком свежий ({(time.time()-file_time):.1f} сек), ждем...")
+                    time.sleep(1)
             
             # Открываем файл для добавления/чтения
             lock_f = open(_lock_file_path, 'a+')
@@ -1859,7 +2032,12 @@ def check_if_already_running():
 
 def main():
     global _lock_file
-    
+
+    # Диагностика автозапуска
+    print(f"[DEBUG] Запуск из: {os.path.abspath(sys.argv[0])}")
+    print(f"[DEBUG] Рабочая директория: {os.getcwd()}")
+    print(f"[DEBUG] Python: {sys.executable}")
+
     try:
         # Проверка через файловую блокировку
         if check_if_already_running():
