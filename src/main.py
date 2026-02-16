@@ -887,10 +887,19 @@ class InternetSpeedMonitor:
     def create_tray_icon(self):
         """Создание иконки в системном трее"""
         try:
-            # Создаем простое изображение для иконки
-            image = Image.new('RGB', (64, 64), color='blue')
-            draw = ImageDraw.Draw(image)
-            draw.text((20, 25), "SPD", fill='white')
+            ###
+            # Загружаем иконку из файла
+            try:
+                icon_path = os.path.join(self.base_dir, "src", "icon.ico")
+                image = Image.open(icon_path)
+                # При необходимости измените размер
+                image = image.resize((64, 64), Image.Resampling.LANCZOS)
+            except Exception as e:
+                self.logger.error(f"Не удалось загрузить иконку для трея: {e}")
+                # Запасной вариант - создаем простую иконку
+                image = Image.new('RGB', (64, 64), color='blue')
+                draw = ImageDraw.Draw(image)
+                draw.text((20, 25), "SPD", fill='white')
             
             self.tray_icon = pystray.Icon(
                 "internet_speed_monitor", 
