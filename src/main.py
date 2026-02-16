@@ -794,19 +794,19 @@ class InternetSpeedMonitor:
             self.log_tree.heading(col, text=col)
             # Все столбцы имеют фиксированную ширину
             if i == 0:  # ID
-                self.log_tree.column(col, width=50, anchor=tk.CENTER, stretch=False)
+                self.log_tree.column(col, width=42, anchor=tk.CENTER, stretch=False)
             elif i == 1:  # Время
                 self.log_tree.column(col, width=90, anchor=tk.CENTER, stretch=False)
-            elif i == 2:  # Загрузка
-                self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=False)
+            elif i == 2:  # Загрузка (+2 символа ≈ 16 пикселей)
+                self.log_tree.column(col, width=108, anchor=tk.CENTER, stretch=False)
             elif i == 3:  # Отдача
                 self.log_tree.column(col, width=100, anchor=tk.CENTER, stretch=False)
             elif i == 4:  # Пинг
                 self.log_tree.column(col, width=70, anchor=tk.CENTER, stretch=False)
-            elif i == 5:  # Джиттер
-                self.log_tree.column(col, width=80, anchor=tk.CENTER, stretch=False)
-            else:  # Сервер
-                self.log_tree.column(col, width=200, anchor=tk.W, stretch=False)
+            elif i == 5:  # Джиттер (+2 символа ≈ 16 пикселей)
+                self.log_tree.column(col, width=96, anchor=tk.CENTER, stretch=False)
+            else:  # Сервер (+5 символов ≈ 40 пикселей)
+                self.log_tree.column(col, width=240, anchor=tk.W, stretch=False)
         ###
         
         self.log_tree.pack(fill='both', expand=True)
@@ -1150,156 +1150,90 @@ class InternetSpeedMonitor:
 
                 # Ждем завершения
                 process.wait(timeout=120)
-###
+
             # Читаем результаты из файлов в бинарном режиме
             with open(stdout_temp.name, 'rb') as f:
                 stdout_bytes = f.read()
             
             # Пробуем разные кодировки
             stdout = None
-            for encoding in ['utf-8', 'cp1251', 'cp866', 'latin-1']:
+            for encoding in ['utf-8', 'cp1251', 'cp866']:
                 try:
                     stdout = stdout_bytes.decode(encoding)
-                    self.logger.info(f"Успешно декодировано в {encoding}")
+                    self.logger.info(f"Декодировано в {encoding}")
                     break
                 except:
                     continue
-            
-            if stdout is None:
-                stdout = stdout_bytes.decode('utf-8', errors='ignore')
-                self.logger.warning("Использовано игнорирование ошибок")
 
-            with open(stderr_temp.name, 'r', encoding='utf-8', errors='ignore') as f:
-                stderr = f.read()
-###
-            # ВРЕМЕННАЯ ДИАГНОСТИКА
-            self.logger.info("=== НАЧАЛО ДИАГНОСТИКИ ===")
-            self.logger.info(f"STDERR длина: {len(stderr) if stderr else 0}")
-            if stderr:
-                self.logger.info("STDERR содержимое:")
-                for i, line in enumerate(stderr.split('\n')):
-                    self.logger.info(f"  stderr[{i}]: {line}")
-            else:
-                self.logger.info("STDERR пуст")
-            self.logger.info("=== КОНЕЦ ДИАГНОСТИКИ ===")
-###
-###
-            # ВРЕМЕННО: сохраняем вывод для анализа
-            with open('debug_output.txt', 'w', encoding='utf-8') as f:
-                f.write(stdout)
-            self.logger.info("Вывод сохранен в debug_output.txt для анализа")
-###
+            # Читаем stderr
+            with open(stderr_temp.name, 'rb') as f:
+                stderr_bytes = f.read()
+            stderr = stderr_bytes.decode('utf-8', errors='ignore')
 
             # Удаляем временные файлы
             os.unlink(stdout_temp.name)
             os.unlink(stderr_temp.name)
 
-            # Логируем результаты (только если нужно для отладки)
-            # self.logger.info(f"STDOUT: {stdout.strip()}")
-            if stderr.strip():
-                self.logger.warning(f"STDERR: {stderr.strip()}")
-###
             # Парсим название сервера из stdout
             server_name = "OpenSpeedTest"
             lines = stdout.split('\n')
-            for line in lines[:30]:  # Смотрим первые 30 строк
-                line = line.strip()
-                # Ищем строку с сервером
+            for line in lines:
                 if "Лучший сервер найден:" in line:
                     try:
                         # Извлекаем название после "Лучший сервер найден:"
-                        server_part = line.split("Лучший сервер найден:", 1)[1].strip()
-                        
-                        # Убираем пинг в конце (цифры в скобках)
-                        import re
-                        # Убираем часть с пингом вида (31.00 мс)
-                        server_part = re.sub(r'\s*\(\d+\.?\d*\s*[мс]+\s*\)\s*$', '', server_part)
-                        
-                        # Убираем повторяющиеся скобки в конце
-                        server_part = re.sub(r'\s*\([^)]+\)\s*$', '', server_part)
-                        
-                        # Очищаем от лишних символов
-                        server_name = server_part.strip()
-                        
-                        # Финальная очистка от множественных скобок
-                        if server_name.count('(') > server_name.count(')'):
-                            server_name = server_name.replace('(', '', 1)
-                        
+                        full = line.split("Лучший сервер найден:", 1)[1].strip()
+                        # Убираем пинг в конце
+                        clean = re.sub(r'\s*\(\d+\.?\d*\s*мс\s*\)\s*$', '', full)
+                        # Если есть дублирование, берем первое вхождение
+                        if '(' in clean and clean.count('(') > 1:
+                            # Берем только до вторых скобок
+                            parts = clean.split('(', 2)
+                            server_name = parts[0].strip() + ' (' + parts[1].strip()
+                        else:
+                            server_name = clean
                         self.logger.info(f"Сервер: {server_name}")
                         break
-                    except Exception as e:
-                        self.logger.error(f"Ошибка парсинга сервера: {e}")
-###
-            # Парсим вывод - берем ТОЛЬКО последние (финальные) значения
+                    except:
+                        pass
+
+            # Парсим финальные значения из конца вывода
             download_speed = 0
             upload_speed = 0
             ping = 0
             jitter = 0.0
-            server_name = "OpenSpeedTest"  # Значение по умолчанию
 
-            # Ищем финальные результаты в конце вывода
-            lines = stdout.split('\n')
-            for line in reversed(lines):  # Идем с конца
+            # Ищем последние 50 строк (там финальные результаты)
+            lines = stdout.split('\n')[-50:]
+            for line in lines:
                 line = line.strip()
                 
-                # Пропускаем пустые строки
-                if not line:
-                    continue
-                
-                # Ищем название сервера (например: "Сервер:   Москва, Россия (СПУТНИК)")
-                if "Сервер:" in line and server_name == "OpenSpeedTest":
-                    try:
-                        # Берем всё после "Сервер:"
-                        server_name = line.split("Сервер:", 1)[1].strip()
-                        self.logger.info(f"Сервер: {server_name}")
-                    except:
-                        pass
-                
-                # Ищем Download
                 if "Download:" in line and download_speed == 0:
-                    try:
-                        numbers = re.findall(r"(\d+\.?\d*)", line)
-                        if numbers:
-                            download_speed = float(numbers[0])
-                            self.logger.info(f"Скорость скачивания: {download_speed:.2f} Mbps")
-                    except:
-                        pass
+                    numbers = re.findall(r"(\d+\.?\d*)", line)
+                    if numbers:
+                        download_speed = float(numbers[-1])
+                        self.logger.info(f"Download: {download_speed:.2f} Mbps")
                 
-                # Ищем Upload
                 if "Upload:" in line and upload_speed == 0:
-                    try:
-                        numbers = re.findall(r"(\d+\.?\d*)", line)
-                        if numbers:
-                            upload_speed = float(numbers[0])
-                            self.logger.info(f"Скорость загрузки: {upload_speed:.2f} Mbps")
-                    except:
-                        pass
+                    numbers = re.findall(r"(\d+\.?\d*)", line)
+                    if numbers:
+                        upload_speed = float(numbers[-1])
+                        self.logger.info(f"Upload: {upload_speed:.2f} Mbps")
                 
-                # Ищем Ping
                 if "Ping:" in line and ping == 0:
-                    try:
-                        numbers = re.findall(r"(\d+\.?\d*)", line)
-                        if numbers:
-                            ping = float(numbers[0])
-                            self.logger.info(f"Пинг: {ping:.2f} ms")
-                    except:
-                        pass
+                    numbers = re.findall(r"(\d+\.?\d*)", line)
+                    if numbers:
+                        ping = float(numbers[-1])
+                        self.logger.info(f"Ping: {ping:.2f} ms")
                 
-                # Ищем Jitter
                 if "Jitter:" in line and jitter == 0:
-                    try:
-                        numbers = re.findall(r"(\d+\.?\d*)", line)
-                        if numbers:
-                            jitter = float(numbers[0])
-                            self.logger.info(f"Джиттер: {jitter:.2f} ms")
-                    except:
-                        pass
-                
-                # Если нашли все значения, можно остановиться
-                if (download_speed > 0 and upload_speed > 0 and 
-                    ping > 0 and jitter > 0 and server_name != "OpenSpeedTest"):
-                    break
-###
+                    numbers = re.findall(r"(\d+\.?\d*)", line)
+                    if numbers:
+                        jitter = float(numbers[-1])
+                        self.logger.info(f"Jitter: {jitter:.2f} ms")
+
+            if download_speed == 0 or upload_speed == 0:
+                raise Exception("Не удалось получить данные о скорости из вывода CLI")
+
             # Сохраняем результаты
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
 
@@ -1360,6 +1294,9 @@ class InternetSpeedMonitor:
     def save_test_results(self, download, upload, ping, jitter, server):
         """Сохранение результатов теста в БД"""
         try:
+            # ВРЕМЕННАЯ ДИАГНОСТИКА
+            self.logger.info(f"Сохранение в БД: server='{server}'")
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -1371,7 +1308,7 @@ class InternetSpeedMonitor:
             
             conn.commit()
             conn.close()
-            
+###            
             # Обновляем время последнего измерения
             current_time = datetime.now().strftime('%d.%m.%y %H:%M')
             self.last_check_var.set(current_time)
