@@ -1150,13 +1150,45 @@ class InternetSpeedMonitor:
 
                 # Ждем завершения
                 process.wait(timeout=120)
-
-            # Читаем результаты из файлов
-            with open(stdout_temp.name, 'r', encoding='utf-8', errors='ignore') as f:
-                stdout = f.read()
+###
+            # Читаем результаты из файлов в бинарном режиме
+            with open(stdout_temp.name, 'rb') as f:
+                stdout_bytes = f.read()
+            
+            # Пробуем разные кодировки
+            stdout = None
+            for encoding in ['utf-8', 'cp1251', 'cp866', 'latin-1']:
+                try:
+                    stdout = stdout_bytes.decode(encoding)
+                    self.logger.info(f"Успешно декодировано в {encoding}")
+                    break
+                except:
+                    continue
+            
+            if stdout is None:
+                stdout = stdout_bytes.decode('utf-8', errors='ignore')
+                self.logger.warning("Использовано игнорирование ошибок")
 
             with open(stderr_temp.name, 'r', encoding='utf-8', errors='ignore') as f:
                 stderr = f.read()
+###
+            # ВРЕМЕННАЯ ДИАГНОСТИКА
+            self.logger.info("=== НАЧАЛО ДИАГНОСТИКИ ===")
+            self.logger.info(f"STDERR длина: {len(stderr) if stderr else 0}")
+            if stderr:
+                self.logger.info("STDERR содержимое:")
+                for i, line in enumerate(stderr.split('\n')):
+                    self.logger.info(f"  stderr[{i}]: {line}")
+            else:
+                self.logger.info("STDERR пуст")
+            self.logger.info("=== КОНЕЦ ДИАГНОСТИКИ ===")
+###
+###
+            # ВРЕМЕННО: сохраняем вывод для анализа
+            with open('debug_output.txt', 'w', encoding='utf-8') as f:
+                f.write(stdout)
+            self.logger.info("Вывод сохранен в debug_output.txt для анализа")
+###
 
             # Удаляем временные файлы
             os.unlink(stdout_temp.name)
@@ -1166,12 +1198,44 @@ class InternetSpeedMonitor:
             # self.logger.info(f"STDOUT: {stdout.strip()}")
             if stderr.strip():
                 self.logger.warning(f"STDERR: {stderr.strip()}")
-
+###
+            # Парсим название сервера из stdout
+            server_name = "OpenSpeedTest"
+            lines = stdout.split('\n')
+            for line in lines[:30]:  # Смотрим первые 30 строк
+                line = line.strip()
+                # Ищем строку с сервером
+                if "Лучший сервер найден:" in line:
+                    try:
+                        # Извлекаем название после "Лучший сервер найден:"
+                        server_part = line.split("Лучший сервер найден:", 1)[1].strip()
+                        
+                        # Убираем пинг в конце (цифры в скобках)
+                        import re
+                        # Убираем часть с пингом вида (31.00 мс)
+                        server_part = re.sub(r'\s*\(\d+\.?\d*\s*[мс]+\s*\)\s*$', '', server_part)
+                        
+                        # Убираем повторяющиеся скобки в конце
+                        server_part = re.sub(r'\s*\([^)]+\)\s*$', '', server_part)
+                        
+                        # Очищаем от лишних символов
+                        server_name = server_part.strip()
+                        
+                        # Финальная очистка от множественных скобок
+                        if server_name.count('(') > server_name.count(')'):
+                            server_name = server_name.replace('(', '', 1)
+                        
+                        self.logger.info(f"Сервер: {server_name}")
+                        break
+                    except Exception as e:
+                        self.logger.error(f"Ошибка парсинга сервера: {e}")
+###
             # Парсим вывод - берем ТОЛЬКО последние (финальные) значения
             download_speed = 0
             upload_speed = 0
             ping = 0
-            server_name = "OpenSpeedTest"
+            jitter = 0.0
+            server_name = "OpenSpeedTest"  # Значение по умолчанию
 
             # Ищем финальные результаты в конце вывода
             lines = stdout.split('\n')
@@ -1181,6 +1245,15 @@ class InternetSpeedMonitor:
                 # Пропускаем пустые строки
                 if not line:
                     continue
+                
+                # Ищем название сервера (например: "Сервер:   Москва, Россия (СПУТНИК)")
+                if "Сервер:" in line and server_name == "OpenSpeedTest":
+                    try:
+                        # Берем всё после "Сервер:"
+                        server_name = line.split("Сервер:", 1)[1].strip()
+                        self.logger.info(f"Сервер: {server_name}")
+                    except:
+                        pass
                 
                 # Ищем Download
                 if "Download:" in line and download_speed == 0:
@@ -1212,15 +1285,21 @@ class InternetSpeedMonitor:
                     except:
                         pass
                 
-                # Если нашли все три значения, можно остановиться
-                if download_speed > 0 and upload_speed > 0 and ping > 0:
+                # Ищем Jitter
+                if "Jitter:" in line and jitter == 0:
+                    try:
+                        numbers = re.findall(r"(\d+\.?\d*)", line)
+                        if numbers:
+                            jitter = float(numbers[0])
+                            self.logger.info(f"Джиттер: {jitter:.2f} ms")
+                    except:
+                        pass
+                
+                # Если нашли все значения, можно остановиться
+                if (download_speed > 0 and upload_speed > 0 and 
+                    ping > 0 and jitter > 0 and server_name != "OpenSpeedTest"):
                     break
-
-            if download_speed == 0 and upload_speed == 0:
-                raise Exception("Не удалось получить данные о скорости из вывода CLI")
-
-            jitter = 0.0
-
+###
             # Сохраняем результаты
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
 
