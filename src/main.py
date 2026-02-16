@@ -412,8 +412,9 @@ class InternetSpeedMonitor:
 ###
     def analyze_connection_quality(self):
         """Анализ качества соединения за последнюю неделю"""
+        conn = None
         try:
-            # Подключаемся к БД
+            # Подключаемся к БД (ОДНО соединение для всех запросов)
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -433,16 +434,15 @@ class InternetSpeedMonitor:
             ''', (week_ago,))
             
             result = cursor.fetchone()
-            conn.close()
             
             if not result or not result[0] or result[4] < 3:  # Минимум 3 измерения
                 self.logger.info("Недостаточно данных для анализа (меньше 3 измерений за неделю)")
+                conn.close()
                 return
             
             avg_download, avg_upload, avg_ping, avg_jitter, count = result
             
             # Получаем средние значения за предыдущий период для сравнения
-            # (используем данные за позапрошлую неделю)
             two_weeks_ago = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
             week_before = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
             
@@ -455,6 +455,11 @@ class InternetSpeedMonitor:
             ''', (two_weeks_ago, week_before))
             
             prev_result = cursor.fetchone()
+            
+            # Закрываем соединение ПОСЛЕ всех запросов
+            conn.close()
+            conn = None
+            
             prev_avg_download = prev_result[0] if prev_result and prev_result[0] else avg_download
             prev_avg_ping = prev_result[1] if prev_result and prev_result[1] else avg_ping
             
@@ -481,6 +486,10 @@ class InternetSpeedMonitor:
             
         except Exception as e:
             self.logger.error(f"Ошибка анализа соединения: {e}")
+        finally:
+            # Гарантированно закрываем соединение, если оно еще открыто
+            if conn:
+                conn.close()
 ###
     def show_quality_warning(self, issues, avg_download, avg_upload, avg_ping, avg_jitter, count):
         """Показать предупреждение о низком качестве соединения"""
