@@ -22,12 +22,6 @@ from queue import Queue
 import math
 import argparse # Используем argparse для удобства
 import statistics # <-- ДОБАВЛЕНО для медианы
-import io
-
-# Устанавливаем кодировку для Windows
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # ---
 # Глобальные переменные и конфигурация
@@ -86,15 +80,15 @@ def stop_spinner(spinner_thread, success=True, message=""):
     if spinner_thread:
         spinner_running = False
         spinner_thread.join()
-    
+        
     if sys.stdout.isatty():
         sys.stdout.write('\r\033[K') # Очищаем строку
     
     if message:
         if success:
-            print(f"OK {message}")  # Было: ✓
+            print(f"+ {message}")
         else:
-            print(f"ERR {message}", file=sys.stderr)  # Было: ✗
+            print(f"✖ {message}", file=sys.stderr)
     sys.stdout.flush()
 
 
@@ -445,21 +439,16 @@ def run_test_phase(phase, server, duration, threads):
             if total_upload_requests > 0:
                 total_uploaded_bytes = total_upload_requests * 1024 * 1024
                 final_speed_mbps = (total_uploaded_bytes * 8) / (final_elapsed * 1000 * 1000)
-    ###
+
     # Выводим финальную скорость в новой строке
     sys.stdout.write(f'\r{label}: {final_speed_mbps:10.2f} Mbps\n')
-    sys.stdout.flush()
     return final_speed_mbps
 
 def download_test(server, duration, threads):
-    result = run_test_phase("download", server, duration, threads)
-    sys.stdout.write('\n')  # Добавляем перевод строки после теста скачивания
-    return result
+    return run_test_phase("download", server, duration, threads)
 
 def upload_test(server, duration, threads):
-    result = run_test_phase("upload", server, duration, threads)
-    sys.stdout.write('\n')  # Добавляем перевод строки после теста загрузки
-    return result
+    return run_test_phase("upload", server, duration, threads)
 
 def try_ping_url(full_url):
     """Пытается выполнить один GET-запрос к URL для пинга."""

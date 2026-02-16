@@ -1102,254 +1102,148 @@ class InternetSpeedMonitor:
 
     ###
     def _perform_speed_test(self):
-        """Выполнение теста скорости через OpenSpeedTest с проверками соединения"""
+        """Выполнение теста скорости через внешний openspeedtest-cli"""
         try:
+            import os
+            import tempfile
+            import re
+            
             # Проверяем интернет-соединение перед началом
             if not self.check_internet_connection():
                 error_msg = "Нет подключения к интернету"
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                self.test_in_progress = False
                 return
-            
-            # Обновляем статус
-            self.root.after(0, lambda: self.status_var.set("Запуск теста скорости через OpenSpeedTest..."))
-            self.logger.info("Запуск теста скорости через OpenSpeedTest...")
-            time.sleep(0.5)
-###            
-            # Импортируем из нашего скрипта с повторными попытками
-            import_attempts = 3
-            ost = None
-            for attempt in range(import_attempts):
-                try:
-                    import openspeedtest as ost
-                    self.logger.info(f"openspeedtest успешно импортирован (попытка {attempt + 1})")
-                    # Проверим основные функции
-                    self.logger.info(f"  Доступные функции: {[f for f in dir(ost) if not f.startswith('_')]}")
-                    break
-                except ImportError as e:
-                    if attempt < import_attempts - 1:
-                        self.logger.warning(f"Попытка {attempt + 1}/{import_attempts} импорта не удалась, ждем 2 секунды...")
-                        time.sleep(2)
-                    else:
-                        self.logger.error(f"✗ Ошибка импорта openspeedtest после {import_attempts} попыток: {e}")
-                        raise Exception("Модуль openspeedtest не установлен. Выполните: pip install openspeedtest")
-                except Exception as e:
-                    if attempt < import_attempts - 1:
-                        self.logger.warning(f"Попытка {attempt + 1}/{import_attempts} импорта не удалась: {e}")
-                        time.sleep(2)
-                    else:
-                        self.logger.error(f"✗ Другая ошибка при импорте: {e}")
-                        raise
-            
-            if ost is None:
-                raise Exception("Не удалось импортировать openspeedtest")
-###            
-            # Читаем API ключ из .env
-            api_key = None
-            # Определяем путь к .env
-            env_path = os.path.join(self.base_dir, ".env")
-            self.logger.info(f"Поиск .env по пути: {env_path}")
-            
-            try:
-                with open(env_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if line.startswith("OPENSPEEDTEST_API_KEY="):
-                            api_key = line.strip().split("=", 1)[1]
-                            break
-                
-                if api_key:
-                    self.logger.info(f"API ключ найден в {env_path}")
-                    self.logger.info(f"Длина ключа: {len(api_key)}")
-                else:
-                    self.logger.error("API ключ не найден в файле .env")
-                    
-            except FileNotFoundError:
-                self.logger.error(f"Файл .env не найден по пути: {env_path}")
-                # Пробуем найти в текущей директории
-                try:
-                    with open('.env', 'r', encoding='utf-8') as f:
-                        for line in f:
-                            if line.startswith("OPENSPEEDTEST_API_KEY="):
-                                api_key = line.strip().split("=", 1)[1]
-                                break
-                    if api_key:
-                        self.logger.info(f"API ключ найден в текущей директории")
-                        self.logger.info(f"Длина ключа: {len(api_key)}")
-                except Exception as e2:
-                    self.logger.error(f"Ошибка чтения .env в текущей директории: {e2}")
-                    
-            except Exception as e:
-                self.logger.error(f"Ошибка чтения .env: {e}")
-            
-            self.logger.info(f"API ключ прочитан: {'да' if api_key else 'нет'}")
-            
-            if not api_key:
-                raise Exception("API ключ не найден в файле .env")
-            
-            # Конфиг для API
-            config = {"api_key": api_key}
-            
-            # Проверка соединения перед получением серверов
-            if not self.check_internet_connection():
-                raise Exception("Потеряно соединение с интернетом")
-            
-            # Получаем серверы
-            self.root.after(0, lambda: self.status_var.set("Получение списка серверов..."))
-            self.logger.info("Получение списка серверов...")
-###
-            servers = ost.fetch_servers_from_api(config)
-            
-            self.logger.info(f"Получено серверов: {len(servers) if servers else 0}")
-            
-            # Создаем URL для серверов, у которых его нет
-            if servers:
-                for s in servers:
-                    if not s.get('url') and s.get('host'):
-                        # Формируем URL из host
-                        host = s.get('host')
-                        s['url'] = f"http://{host}/speedtest/"
-                        self.logger.info(f"Создан URL для {s.get('name')}: {s['url']}")
-                    elif not s.get('url') and not s.get('host'):
-                        self.logger.warning(f"Сервер {s.get('name')} не имеет ни URL, ни host")
-            
-            if not servers:
-                raise Exception("Не удалось получить список серверов")
-            
-            # Выведем первые несколько серверов для диагностики
-            for i, s in enumerate(servers[:3]):
-                self.logger.info(f"Сервер {i+1}: {s.get('name')} - {s.get('host')} - URL: {s.get('url')}")
-###            
-            # Выведем первые несколько серверов для диагностики
-            for i, s in enumerate(servers[:3]):
-                self.logger.info(f"Сервер {i+1}: {s.get('name')} - {s.get('host')}")
-            
-            # Проверка соединения перед поиском сервера
-            if not self.check_internet_connection():
-                raise Exception("Потеряно соединение с интернетом")
-            
-            # Находим лучший сервер
-            self.root.after(0, lambda: self.status_var.set("Поиск лучшего сервера..."))
-            self.logger.info("Поиск лучшего сервера...")
-            
-            # Поиск сервера с увеличенным таймаутом и повторными попытками
-            server = None
-            for attempt in range(3):  # 3 попытки
-                try:
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(ost.find_best_server, servers)
-                        server = future.result(timeout=45)  # Увеличили до 45 секунд
-                        break  # Успешно нашли, выходим из цикла
-                except concurrent.futures.TimeoutError:
-                    if attempt < 2:  # Если не последняя попытка
-                        self.logger.warning(f"Попытка {attempt + 1}/3 поиска сервера не удалась (таймаут), пробуем снова...")
-                        time.sleep(5)
-                    else:
-                        raise Exception("Не удалось найти сервер после 3 попыток. Проверьте подключение к интернету.")
-                except Exception as e:
-                    if attempt < 2:
-                        self.logger.warning(f"Попытка {attempt + 1}/3 поиска сервера не удалась: {e}")
-                        time.sleep(5)
-                    else:
-                        raise Exception(f"Ошибка при поиске сервера: {e}")
 
-            server_name = server['name']
-###
-            # Проверка URL сервера
-            server_url = server.get('url')
-            if not server_url:
-                self.logger.error(f"URL сервера не найден для {server.get('name')}, пробуем создать из host...")
+            self.root.after(0, lambda: self.status_var.set("Запуск теста скорости..."))
+            self.logger.info("Запуск теста скорости через openspeedtest-cli...")
+
+            # Путь к скрипту openspeedtest-cli (в той же папке, что и main.py)
+            cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
+
+            # Проверяем, существует ли файл
+            if not os.path.exists(cli_path):
+                error_msg = f"Файл openspeedtest-cli не найден по пути: {cli_path}"
+                self.logger.error(error_msg)
+                self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                self.test_in_progress = False
+                return
+
+            # Запускаем процесс с перенаправлением вывода в файл
+            # Создаем временные файлы для вывода
+            stdout_temp = tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.txt')
+            stderr_temp = tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.txt')
+            stdout_temp.close()
+            stderr_temp.close()
+
+            # Открываем файлы для записи
+            with open(stdout_temp.name, 'w', encoding='utf-8') as out_f, \
+                 open(stderr_temp.name, 'w', encoding='utf-8') as err_f:
+
+                process = subprocess.Popen(
+                    [sys.executable, cli_path],
+                    stdout=out_f,
+                    stderr=err_f,
+                    text=True
+                )
+
+                # Ждем завершения
+                process.wait(timeout=120)
+
+            # Читаем результаты из файлов
+            with open(stdout_temp.name, 'r', encoding='utf-8', errors='ignore') as f:
+                stdout = f.read()
+
+            with open(stderr_temp.name, 'r', encoding='utf-8', errors='ignore') as f:
+                stderr = f.read()
+
+            # Удаляем временные файлы
+            os.unlink(stdout_temp.name)
+            os.unlink(stderr_temp.name)
+
+            # Логируем результаты (только если нужно для отладки)
+            # self.logger.info(f"STDOUT: {stdout.strip()}")
+            if stderr.strip():
+                self.logger.warning(f"STDERR: {stderr.strip()}")
+
+            # Парсим вывод - берем ТОЛЬКО последние (финальные) значения
+            download_speed = 0
+            upload_speed = 0
+            ping = 0
+            server_name = "OpenSpeedTest"
+
+            # Ищем финальные результаты в конце вывода
+            lines = stdout.split('\n')
+            for line in reversed(lines):  # Идем с конца
+                line = line.strip()
                 
-                # Пробуем создать URL из host текущего сервера
-                if server.get('host'):
-                    server_url = f"http://{server.get('host')}/speedtest/"
-                    server['url'] = server_url
-                    self.logger.info(f"Создан URL для текущего сервера: {server_url}")
-                else:
-                    # Если у текущего сервера нет host, ищем любой сервер с host
-                    self.logger.info("Ищем альтернативный сервер с host...")
-                    found_server = None
-                    for alt_server in servers:
-                        if alt_server.get('host'):
-                            found_server = alt_server
-                            server_url = f"http://{alt_server.get('host')}/speedtest/"
-                            alt_server['url'] = server_url
-                            server = alt_server
-                            self.logger.info(f"Найден альтернативный сервер: {alt_server.get('name')} с host {alt_server.get('host')}")
-                            self.logger.info(f"Создан URL: {server_url}")
-                            break
-                    
-                    if not found_server:
-                        # Если ни у одного сервера нет host, используем первый сервер
-                        self.logger.warning("Ни один сервер не имеет host, пробуем использовать первый сервер")
-                        server = servers[0] if servers else None
-                        if not server:
-                            raise Exception("Нет доступных серверов")
-                        # Для первого сервера тоже пытаемся создать URL, если есть host
-                        if server.get('host'):
-                            server_url = f"http://{server.get('host')}/speedtest/"
-                            server['url'] = server_url
-                        else:
-                            server_url = None
-                    
-            if not server_url:
-                raise Exception(f"Не удалось получить или создать URL для сервера {server.get('name')}")
-###
-            self.logger.info(f"Выбран сервер: {server.get('name')}")
-            self.logger.info(f"URL сервера: {server.get('url')}")
-            
-            # Получаем пинг и джиттер
-            ping = server.get('ping', 0)
-            jitter = server.get('jitter', 0)
-            
-            duration = 10  # фиксированная длительность теста
-            
-            # Проверка соединения перед тестом скачивания
-            if not self.check_internet_connection():
-                raise Exception("Потеряно соединение с интернетом перед тестом скачивания")
-            
-            # Тест скачивания
-            self.root.after(0, lambda: self.status_var.set("Тест скачивания..."))
-            self.logger.info("Тест скачивания...")
-            try:
-                download_speed = ost.download_test(server, duration=duration, threads=4)
-            except Exception as e:
-                if "connection" in str(e).lower() or "timeout" in str(e).lower():
-                    raise Exception("Соединение прервано во время теста скачивания")
-                raise
-            
-            # Проверка соединения перед тестом загрузки
-            if not self.check_internet_connection():
-                raise Exception("Потеряно соединение с интернетом перед тестом загрузки")
-            
-            # Тест загрузки
-            self.root.after(0, lambda: self.status_var.set("Тест загрузки..."))
-            self.logger.info("Тест загрузки...")
-            try:
-                upload_speed = ost.upload_test(server, duration=duration, threads=4)
-            except Exception as e:
-                if "connection" in str(e).lower() or "timeout" in str(e).lower():
-                    raise Exception("Соединение прервано во время теста загрузки")
-                raise
-            
+                # Пропускаем пустые строки
+                if not line:
+                    continue
+                
+                # Ищем Download
+                if "Download:" in line and download_speed == 0:
+                    try:
+                        numbers = re.findall(r"(\d+\.?\d*)", line)
+                        if numbers:
+                            download_speed = float(numbers[0])
+                            self.logger.info(f"Скорость скачивания: {download_speed:.2f} Mbps")
+                    except:
+                        pass
+                
+                # Ищем Upload
+                if "Upload:" in line and upload_speed == 0:
+                    try:
+                        numbers = re.findall(r"(\d+\.?\d*)", line)
+                        if numbers:
+                            upload_speed = float(numbers[0])
+                            self.logger.info(f"Скорость загрузки: {upload_speed:.2f} Mbps")
+                    except:
+                        pass
+                
+                # Ищем Ping
+                if "Ping:" in line and ping == 0:
+                    try:
+                        numbers = re.findall(r"(\d+\.?\d*)", line)
+                        if numbers:
+                            ping = float(numbers[0])
+                            self.logger.info(f"Пинг: {ping:.2f} ms")
+                    except:
+                        pass
+                
+                # Если нашли все три значения, можно остановиться
+                if download_speed > 0 and upload_speed > 0 and ping > 0:
+                    break
+
+            if download_speed == 0 and upload_speed == 0:
+                raise Exception("Не удалось получить данные о скорости из вывода CLI")
+
+            jitter = 0.0
+
             # Сохраняем результаты
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
-            
-            # Обновляем интерфейс
+
             self.root.after(0, lambda: self._update_ui_with_results_and_status(
                 download_speed, upload_speed, ping, jitter, server_name,
                 "Тест завершен"
             ))
-            
+
             self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
-                           f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms, Jitter={jitter:.2f} ms")
-            self.test_in_progress = False
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка теста скорости: {e}")
-            error_msg = str(e)
+                           f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms")
+
+        except subprocess.TimeoutExpired:
+            process.kill()
+            error_msg = "Тест превысил время ожидания (60 сек)"
+            self.logger.error(error_msg)
             self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+        except Exception as e:
+            error_msg = str(e)
+            self.logger.error(f"Ошибка теста скорости: {error_msg}")
+            self.root.after(0, lambda msg=error_msg: self._update_ui_with_error(msg))
+        finally:
             self.test_in_progress = False
+            self.root.after(0, lambda: self.test_button.config(state='normal'))
     ###
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
@@ -1947,10 +1841,16 @@ class InternetSpeedMonitor:
         """Перезапуск приложения"""
         self.logger.info("Перезапуск программы...")
         
+        # Определяем путь к скрипту
+        if getattr(sys, 'frozen', False):
+            script_path = sys.executable
+        else:
+            script_path = os.path.abspath(__file__)  # Текущий файл (main.py)
+        
         # Перезапускаем программу
         python = sys.executable
-        script = os.path.abspath(sys.argv[0])
-        subprocess.Popen([python, script])
+        self.logger.info(f"Запуск: {python} {script_path}")
+        subprocess.Popen([python, script_path])
         
         # Завершаем текущий процесс
         os._exit(0)
