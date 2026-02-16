@@ -201,6 +201,9 @@ class InternetSpeedMonitor:
         # Загружаем последние значения измерений
         self.load_last_measurement()
 
+        # Анализируем качество соединения при каждом запуске программы
+        self.root.after(2000, self.analyze_connection_quality)  # Задержка 2 секунды после старта
+
         self.is_first_load = False  # Сбрасываем после загрузки
         self.update_log()         # Обновляем журнал принудительно
        
@@ -406,6 +409,103 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
+###
+    def analyze_connection_quality(self):
+        """Анализ качества соединения за последнюю неделю"""
+        try:
+            # Подключаемся к БД
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Дата неделю назад
+            week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Получаем средние значения за неделю
+            cursor.execute('''
+                SELECT 
+                    AVG(download_speed) as avg_download,
+                    AVG(upload_speed) as avg_upload,
+                    AVG(ping) as avg_ping,
+                    AVG(jitter) as avg_jitter,
+                    COUNT(*) as measurements_count
+                FROM speed_measurements 
+                WHERE timestamp >= ?
+            ''', (week_ago,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if not result or not result[0] or result[4] < 3:  # Минимум 3 измерения
+                self.logger.info("Недостаточно данных для анализа (меньше 3 измерений за неделю)")
+                return
+            
+            avg_download, avg_upload, avg_ping, avg_jitter, count = result
+            
+            # Получаем средние значения за предыдущий период для сравнения
+            # (используем данные за позапрошлую неделю)
+            two_weeks_ago = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
+            week_before = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            cursor.execute('''
+                SELECT 
+                    AVG(download_speed) as prev_avg_download,
+                    AVG(ping) as prev_avg_ping
+                FROM speed_measurements 
+                WHERE timestamp BETWEEN ? AND ?
+            ''', (two_weeks_ago, week_before))
+            
+            prev_result = cursor.fetchone()
+            prev_avg_download = prev_result[0] if prev_result and prev_result[0] else avg_download
+            prev_avg_ping = prev_result[1] if prev_result and prev_result[1] else avg_ping
+            
+            # Проверяем условия
+            issues = []
+            
+            # Условие 1: Скорость скачивания ниже на 25%+
+            if prev_avg_download > 0 and avg_download < prev_avg_download * 0.75:
+                drop_percent = (1 - avg_download / prev_avg_download) * 100
+                issues.append(f"• Скорость скачивания упала на {drop_percent:.1f}% (с {prev_avg_download:.1f} до {avg_download:.1f} Mbps)")
+            
+            # Условие 2: Пинг выше на 100%+
+            if prev_avg_ping > 0 and avg_ping > prev_avg_ping * 2:
+                increase_percent = (avg_ping / prev_avg_ping - 1) * 100
+                issues.append(f"• Пинг вырос на {increase_percent:.1f}% (с {prev_avg_ping:.1f} до {avg_ping:.1f} ms)")
+            
+            # Условие 3: Джиттер выше 15 мс
+            if avg_jitter > 15:
+                issues.append(f"• Джиттер превышает норму: {avg_jitter:.1f} ms (рекомендуется < 15 ms)")
+            
+            # Если есть проблемы, показываем окно
+            if issues:
+                self.show_quality_warning(issues, avg_download, avg_upload, avg_ping, avg_jitter, count)
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка анализа соединения: {e}")
+###
+    def show_quality_warning(self, issues, avg_download, avg_upload, avg_ping, avg_jitter, count):
+        """Показать предупреждение о низком качестве соединения"""
+        
+        # Формируем текст сообщения
+        message = "⚠️  НИЗКОЕ КАЧЕСТВО СОЕДИНЕНИЯ  ⚠️\n\n"
+        message += "Обнаружены проблемы за последние 7 дней:\n\n"
+        
+        for issue in issues:
+            message += f"{issue}\n"
+        
+        message += f"\nСредние значения за неделю ({count} измерений):\n"
+        message += f"📥 Загрузка: {avg_download:.1f} Mbps\n"
+        message += f"📤 Отдача: {avg_upload:.1f} Mbps\n"
+        message += f"📶 Пинг: {avg_ping:.1f} ms\n"
+        message += f"📊 Джиттер: {avg_jitter:.1f} ms\n\n"
+        
+        message += "Рекомендуется обратиться к вашему провайдеру\n"
+        message += "для диагностики качества соединения."
+        
+        # Показываем окно с предупреждением
+        self.root.after(0, lambda: messagebox.showwarning(
+            "Качество соединения",
+            message
+        ))
 ###
     ##
     def setup_console(self):
@@ -615,7 +715,7 @@ class InternetSpeedMonitor:
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
         # Фрейм с текущими показателями
-        current_frame = ttk.LabelFrame(self.monitor_frame, text="Текущая скорость", padding=self.scale_value(15))
+        current_frame = ttk.LabelFrame(self.monitor_frame, text="Параметры соединения", padding=self.scale_value(15))
         current_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
         # Скорость загрузки
