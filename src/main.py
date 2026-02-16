@@ -197,6 +197,10 @@ class InternetSpeedMonitor:
         # Загрузка настроек
         self.is_first_load = True  # Флаг первого запуска
         self.load_settings()
+
+        # Загружаем последние значения измерений
+        self.load_last_measurement()
+
         self.is_first_load = False  # Сбрасываем после загрузки
         self.update_log()         # Обновляем журнал принудительно
        
@@ -375,6 +379,34 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка получения даты первого измерения: {e}")
             return datetime(2026, 1, 1).date()
+
+###
+    def load_last_measurement(self):
+        """Загрузка последнего измерения из БД для отображения при старте"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT download_speed, upload_speed, ping, jitter 
+                FROM speed_measurements 
+                ORDER BY timestamp DESC LIMIT 1
+            ''')
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                download, upload, ping, jitter = result
+                self.download_var.set(f"{download:.2f} Mbps")
+                self.upload_var.set(f"{upload:.2f} Mbps")
+                self.ping_var.set(f"{ping:.2f} ms")
+                self.jitter_var.set(f"{jitter:.2f} ms")
+                self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
+            else:
+                self.logger.info("Нет сохраненных измерений")
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
+###
     ##
     def setup_console(self):
         """Настройка консоли Windows"""
@@ -1312,6 +1344,12 @@ class InternetSpeedMonitor:
             # Обновляем время последнего измерения
             current_time = datetime.now().strftime('%d.%m.%y %H:%M')
             self.last_check_var.set(current_time)
+
+            # Обновляем отображение текущих значений
+            self.download_var.set(f"{download:.2f} Mbps")
+            self.upload_var.set(f"{upload:.2f} Mbps")
+            self.ping_var.set(f"{ping:.2f} ms")
+            self.jitter_var.set(f"{jitter:.2f} ms")
             
             # Обновляем журнал и графики
             self.root.after(0, self.update_log)
