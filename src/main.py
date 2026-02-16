@@ -1066,6 +1066,7 @@ class InternetSpeedMonitor:
     def update_autostart(self):
         """Добавление/удаление из автозапуска Windows"""
         try:
+            import winreg
             key = winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Run",
@@ -1074,7 +1075,7 @@ class InternetSpeedMonitor:
             
             app_name = "InternetSpeedMonitor"
             
-            # Определяем путь к pythonw.exe (без окна консоли)
+            # Путь к pythonw.exe (без окна консоли)
             python_dir = os.path.dirname(sys.executable)
             pythonw_path = os.path.join(python_dir, "pythonw.exe")
             
@@ -1082,27 +1083,20 @@ class InternetSpeedMonitor:
             if not os.path.exists(pythonw_path):
                 pythonw_path = sys.executable
             
-            # Путь к скрипту (берем абсолютный путь)
-            script_path = os.path.abspath(sys.argv[0])
+            # ПРАВИЛЬНЫЙ путь к скрипту (src/main.py)
+            script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "main.py")
             
-            # Путь к рабочей директории (корень проекта)
-            working_dir = os.path.dirname(os.path.dirname(script_path))
+            # Проверяем существование файла
+            if not os.path.exists(script_path):
+                # Если не нашли, используем текущий файл
+                script_path = os.path.abspath(__file__)
+                self.logger.warning(f"Путь по умолчанию не найден, использую: {script_path}")
             
             if self.auto_start_var.get():
-                # Формируем команду с указанием рабочей директории
+                # Формируем команду
                 cmd = f'"{pythonw_path}" "{script_path}"'
                 winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
                 self.logger.info(f"Добавлено в автозапуск: {cmd}")
-                
-                # Проверяем что создалось
-                check_key = winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run",
-                    0, winreg.KEY_READ
-                )
-                value, regtype = winreg.QueryValueEx(check_key, app_name)
-                winreg.CloseKey(check_key)
-                self.logger.info(f"Значение в реестре: {value}")
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
@@ -1111,6 +1105,7 @@ class InternetSpeedMonitor:
                     pass
             
             winreg.CloseKey(key)
+                
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
 
