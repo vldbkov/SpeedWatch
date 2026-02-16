@@ -1122,7 +1122,7 @@ class InternetSpeedMonitor:
             for attempt in range(import_attempts):
                 try:
                     import openspeedtest as ost
-                    self.logger.info(f"✓ openspeedtest успешно импортирован (попытка {attempt + 1})")
+                    self.logger.info(f"openspeedtest успешно импортирован (попытка {attempt + 1})")
                     # Проверим основные функции
                     self.logger.info(f"  Доступные функции: {[f for f in dir(ost) if not f.startswith('_')]}")
                     break
@@ -2000,12 +2000,12 @@ def check_if_already_running():
                 # Пытаемся захватить эксклюзивный лок на первый байт
                 msvcrt.locking(lock_f.fileno(), msvcrt.LK_NBLCK, 1)
                 # Успешно захватили - других экземпляров нет
-                print(f"[DEBUG] ✓ Лок захвачен успешно, процесс может продолжать")
+                print(f"[DEBUG] Лок захвачен успешно, процесс может продолжать")
                 _lock_file = lock_f  # Сохраняем файл - держим блокировку
                 return False  # Возвращаем False = нет других запущенных экземпляров
             except (OSError, IOError, BlockingIOError) as e:
                 # Не удалось захватить лок - другой процесс его удерживает
-                print(f"[DEBUG] ✗ Лок уже занят другим процессом: {e}")
+                print(f"[DEBUG] Лок уже занят другим процессом: {e}")
                 lock_f.close()
                 return True  # Возвращаем True = приложение уже запущено
         else:
@@ -2016,11 +2016,11 @@ def check_if_already_running():
             lock_f = open(_lock_file_path, 'w')
             try:
                 fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                print(f"[DEBUG] ✓ Лок захвачен успешно, процесс может продолжать")
+                print(f"[DEBUG] Лок захвачен успешно, процесс может продолжать")
                 _lock_file = lock_f
                 return False
             except IOError as e:
-                print(f"[DEBUG] ✗ Лок уже занят другим процессом: {e}")
+                print(f"[DEBUG] Лок уже занят другим процессом: {e}")
                 lock_f.close()
                 return True
     
