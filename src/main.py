@@ -645,6 +645,93 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка создания окна 'О программе': {e}")
 
+###
+    def check_for_updates(self):
+        """Проверка наличия обновлений на GitHub"""
+        try:
+            import requests
+            from tkinter import messagebox
+            
+            # Показываем сообщение о проверке
+            self.logger.info("Проверка обновлений...")
+            
+            # GitHub API для получения последнего релиза
+            repo = "vldbkov/SpeedWatch"  # замените на ваш репозиторий
+            url = f"https://api.github.com/repos/{repo}/releases/latest"
+            
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                latest_release = response.json()
+                latest_version = latest_release["tag_name"].lstrip('v')  # убираем 'v' если есть
+                current_version = __version__
+                
+                # Сравниваем версии (простое строковое сравнение для формата x.y.z)
+                if self._is_newer_version(latest_version, current_version):
+                    # Есть обновление
+                    message = (
+                        f"Доступна новая версия {latest_version}!\n\n"
+                        f"У вас установлена версия {current_version}.\n\n"
+                        f"Что нового:\n{latest_release.get('body', 'Описание отсутствует')}\n\n"
+                        f"Хотите скачать обновление?"
+                    )
+                    
+                    if messagebox.askyesno("Доступно обновление", message):
+                        # Открываем страницу релиза
+                        self._open_url(latest_release["html_url"])
+                else:
+                    # Нет обновлений
+                    messagebox.showinfo(
+                        "Проверка обновлений",
+                        f"У вас установлена последняя версия ({current_version})."
+                    )
+            elif response.status_code == 404:
+                messagebox.showinfo(
+                    "Проверка обновлений",
+                    f"У вас установлена последняя версия программы ({__version__})."
+                )
+            else:
+                self.logger.error(f"Ошибка GitHub API: {response.status_code}")
+                messagebox.showerror(
+                    "Ошибка",
+                    "Не удалось проверить обновления. Проверьте подключение к интернету."
+                )
+                
+        except ImportError:
+            messagebox.showerror(
+                "Ошибка",
+                "Для проверки обновлений требуется библиотека requests.\n"
+                "Установите: pip install requests"
+            )
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Ошибка сети при проверке обновлений: {e}")
+            messagebox.showerror(
+                "Ошибка",
+                "Не удалось подключиться к GitHub. Проверьте интернет-соединение."
+            )
+        except Exception as e:
+            self.logger.error(f"Ошибка при проверке обновлений: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось проверить обновления: {e}")
+###
+    def _is_newer_version(self, latest, current):
+        """Сравнение версий в формате x.y.z"""
+        try:
+            # Разбиваем на компоненты
+            latest_parts = list(map(int, latest.split('.')))
+            current_parts = list(map(int, current.split('.')))
+            
+            # Дополняем нулями до одинаковой длины
+            max_len = max(len(latest_parts), len(current_parts))
+            latest_parts += [0] * (max_len - len(latest_parts))
+            current_parts += [0] * (max_len - len(current_parts))
+            
+            # Сравниваем покомпонентно
+            return latest_parts > current_parts
+        except:
+            # Если не удалось распарсить, сравниваем как строки
+            return latest > current
+###
+
     def _open_url(self, url):
         """Открыть ссылку в браузере"""
         try:
@@ -778,6 +865,10 @@ class InternetSpeedMonitor:
                 pystray.MenuItem(
                     "Тест сейчас", 
                     lambda: self.run_speed_test()
+                ),
+                pystray.MenuItem(
+                    "Проверить обновления", 
+                    lambda: self.check_for_updates()
                 ),
                 pystray.MenuItem(
                     "О программе", 
