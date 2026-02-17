@@ -33,7 +33,7 @@ git clone https://github.com/baykovv/SpeedWatch.git
 cd SpeedWatch
 ```
 
-2. Установка зависимостей
+### 2. Установка зависимостей
 ```
 # Создание виртуального окружения (рекомендуется)
 py -3.12 -m venv venv
@@ -43,7 +43,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Настройка openspeedtest-cli
+### 3. Настройка openspeedtest-cli
 Запустите автоматический скрипт настройки:
 
 ```
@@ -64,7 +64,7 @@ cd src
 
 Сохранит ключ в конфигурацию CLI
 
-4. Ручной ввод API ключа (если не был найден автоматически)
+### 4. Ручной ввод API ключа (если не был найден автоматически)
 Если ключ не найден, скрипт запросит его ввод. Ключ можно получить на openspeedtest.ru после регистрации.
 
 ```
@@ -72,7 +72,7 @@ cd src
 py -3.12 .\openspeedtest-cli-fixed configure
 ```
 
-5. Проверка работы
+### 5. Проверка работы
 ```
 # Проверить, что CLI работает
 py -3.12 .\openspeedtest-cli-fixed
