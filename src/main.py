@@ -231,8 +231,10 @@ class InternetSpeedMonitor:
         else:
             # Обычный запуск - задержка 2 секунды
             self.root.after(2000, self.analyze_connection_quality)
-###
-        ###
+
+            # Автоматическая проверка обновлений при старте (с задержкой 3 секунды)
+            self.root.after(3000, self._check_updates_auto)
+        
         # Флаг начального состояния (старт в трее)
         self.started_in_tray = True        
         ###
@@ -712,6 +714,56 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений: {e}")
             messagebox.showerror("Ошибка", f"Не удалось проверить обновления: {e}")
+###
+    def _check_updates_auto(self):
+        """Автоматическая проверка обновлений при старте (без диалогов)"""
+        try:
+            import requests
+            
+            # GitHub API для получения последнего релиза
+            repo = "baykovv/SpeedWatch"  # замените на ваш репозиторий
+            url = f"https://api.github.com/repos/{repo}/releases/latest"
+            
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                latest_release = response.json()
+                latest_version = latest_release["tag_name"].lstrip('v')
+                current_version = __version__
+                
+                # Если есть новая версия - показываем уведомление
+                if self._is_newer_version(latest_version, current_version):
+                    self._show_update_notification(latest_version, latest_release["html_url"])
+            elif response.status_code == 404:
+                # Нет релизов - это нормально для первой версии
+                self.logger.info("Релизы не найдены, пропускаем проверку обновлений")
+            else:
+                self.logger.warning(f"Ошибка GitHub API при авто-проверке: {response.status_code}")
+                
+        except ImportError:
+            self.logger.warning("Библиотека requests не установлена, авто-проверка обновлений отключена")
+        except requests.exceptions.RequestException as e:
+            self.logger.warning(f"Ошибка сети при авто-проверке обновлений: {e}")
+        except Exception as e:
+            self.logger.error(f"Ошибка при авто-проверке обновлений: {e}")
+###
+    def _show_update_notification(self, new_version, download_url):
+        """Показать уведомление о новой версии"""
+        try:
+            from tkinter import messagebox
+            
+            result = messagebox.askyesno(
+                "Доступно обновление",
+                f"Доступна новая версия SpeedWatch {new_version}!\n\n"
+                f"У вас установлена версия {__version__}.\n\n"
+                f"Хотите перейти на страницу загрузки?"
+            )
+            
+            if result:
+                self._open_url(download_url)
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка при показе уведомления: {e}")
 ###
     def _is_newer_version(self, latest, current):
         """Сравнение версий в формате x.y.z"""
@@ -2197,7 +2249,6 @@ class InternetSpeedMonitor:
         self.root.after_idle(lambda: self.root.attributes('-topmost', False))
         self.logger.info("Приложение открыто")
         self.status_var.set("Ожидание команды")
-
 
     def minimize_to_tray(self):
         """Сворачивание в системный трей"""
