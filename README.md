@@ -10,7 +10,6 @@ v1.0.0
   [![Release](https://img.shields.io/badge/release-v1.0.0-success)](https://github.com/baykovv/SpeedWatch/releases)
   [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
   [![Windows](https://img.shields.io/badge/platform-windows-0078D6)](https://www.microsoft.com/windows)
-  [![Portable](https://img.shields.io/badge/portable-✓-brightgreen)](https://github.com/baykovv/SpeedWatch/releases)
   [![Auto Update](https://img.shields.io/badge/auto_update-enabled-green)](https://github.com/baykovv/SpeedWatch/releases)
   [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
   [![Downloads](https://img.shields.io/github/downloads/baykovv/SpeedWatch/total)](https://github.com/baykovv/SpeedWatch/releases)
