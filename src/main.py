@@ -131,7 +131,7 @@ class InternetSpeedMonitor:
         scaled_height = int(base_height * self.dpi_scale)
 
         # Настройка окна
-        self.root.title("Internet Speed Monitor")
+        self.root.title("SpeedWatch - Мониторинг скорости интернета")
         self.root.geometry(f"{scaled_width}x{scaled_height}")
         
         # Убираем окно из панели задач при сворачивании в трей
@@ -1161,9 +1161,9 @@ class InternetSpeedMonitor:
                 draw.text((20, 25), "SPD", fill='white')
             
             self.tray_icon = pystray.Icon(
-                "internet_speed_monitor", 
+                "speedwatch", 
                 image, 
-                "Internet Speed Monitor"
+                "SpeedWatch - Мониторинг скорости"
             )
             
             # Создаем начальное меню
