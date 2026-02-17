@@ -577,12 +577,13 @@ class InternetSpeedMonitor:
             )
             thanks_label.pack(pady=(0, 15))
             
-            # Версия - ИСПРАВЛЕНО на 1.0.0
+            # Версия
             version_label = ttk.Label(
                 main_frame,
-                text="Версия 1.0.0",
+                text=f"Версия {__version__}",
                 font=('Arial', 11, 'bold')
             )
+
             version_label.pack(pady=(0, 15))
             
             # Пожелание
@@ -1128,9 +1129,18 @@ class InternetSpeedMonitor:
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
         info_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
-        ttk.Label(info_frame, text="Internet Speed Monitor v1.0", font=self.scale_font('Arial', 12) + ('bold',)).pack()
-        ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения", font=self.scale_font('Arial', 10)).pack()
-        ttk.Label(info_frame, text="© 2026", font=self.scale_font('Arial', 9)).pack()
+        # Название программы с версией
+        version_text = f"SpeedWatch v{__version__}"
+        ttk.Label(info_frame, text=version_text, font=self.scale_font('Arial', 14) + ('bold',)).pack(pady=(0, 5))
+        
+        # Описание
+        ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения", 
+                 font=self.scale_font('Arial', 10)).pack(pady=(0, 5))
+        
+        # Год
+        current_year = datetime.now().year
+        ttk.Label(info_frame, text=f"© {current_year}", 
+                 font=self.scale_font('Arial', 9)).pack()
 
 
     def create_tray_icon(self):
