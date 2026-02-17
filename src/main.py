@@ -24,6 +24,7 @@ from datetime import datetime
 import sqlite3
 import sys
 import traceback
+__version__ = "1.0.0"
 
 # Определяем корневую директорию проекта
 if getattr(sys, 'frozen', False):
@@ -533,6 +534,124 @@ class InternetSpeedMonitor:
             message
         ))
 ###
+    def show_about_window(self):
+        """Показать окно 'О программе'"""
+        try:
+            # Создаем окно
+            about_window = tk.Toplevel()
+            about_window.title("О программе")
+            about_window.geometry("450x350")
+            about_window.resizable(False, False)
+            
+            # Делаем окно независимым от главного
+            about_window.transient()  # Убираем зависимость
+            about_window.grab_set()
+            about_window.focus_force()
+            
+            # Центрируем окно по центру экрана
+            about_window.update_idletasks()
+            screen_width = about_window.winfo_screenwidth()
+            screen_height = about_window.winfo_screenheight()
+            x = (screen_width - 450) // 2
+            y = (screen_height - 350) // 2
+            about_window.geometry(f"+{x}+{y}")
+            
+            # Основной контейнер
+            main_frame = ttk.Frame(about_window, padding="20")
+            main_frame.pack(fill='both', expand=True)
+            
+            # Заголовок
+            title_label = ttk.Label(
+                main_frame, 
+                text="Добро пожаловать!",
+                font=('Arial', 16, 'bold')
+            )
+            title_label.pack(pady=(0, 10))
+            
+            # Благодарность
+            thanks_label = ttk.Label(
+                main_frame,
+                text="Благодарим за выбор\nSpeedWatch!",
+                font=('Arial', 12),
+                justify='center'
+            )
+            thanks_label.pack(pady=(0, 15))
+            
+            # Версия - ИСПРАВЛЕНО на 1.0.0
+            version_label = ttk.Label(
+                main_frame,
+                text="Версия 1.0.0",
+                font=('Arial', 11, 'bold')
+            )
+            version_label.pack(pady=(0, 15))
+            
+            # Пожелание
+            wish_label = ttk.Label(
+                main_frame,
+                text="Желаем вам стабильного и быстрого интернета!\n"
+                     "Мы поможем следить за качеством вашего соединения.",
+                font=('Arial', 10),
+                justify='center',
+                wraplength=380
+            )
+            wish_label.pack(pady=(0, 20))
+            
+            # Ссылки
+            links_frame = ttk.Frame(main_frame)
+            links_frame.pack(pady=(0, 15))
+            
+            # Ссылка на GitHub Issues
+            issues_link = tk.Label(
+                links_frame,
+                text="Замечания и предложения (GitHub Issues)",
+                fg="blue",
+                cursor="hand2",
+                font=('Arial', 9)
+            )
+            issues_link.pack(pady=2)
+            issues_link.bind("<Button-1>", lambda e: self._open_url("https://github.com/vldbkov/SpeedWatch/issues"))
+            
+            # Ссылка на поддержку
+            sponsor_link = tk.Label(
+                links_frame,
+                text="Поддержать автора проекта (YooMoney)",
+                fg="blue",
+                cursor="hand2",
+                font=('Arial', 9)
+            )
+            sponsor_link.pack(pady=2)
+            sponsor_link.bind("<Button-1>", lambda e: self._open_url("https://yoomoney.ru/to/4100119453410920"))
+            
+            # Кнопка "Понятно" - ИСПРАВЛЕН размер
+            ok_button = tk.Button(
+                main_frame,
+                text="Понятно",
+                command=about_window.destroy,
+                width=20,
+                height=2,
+                bg='#f0f0f0',
+                relief='raised'
+            )
+            ok_button.pack(pady=(10, 0))
+            
+            # Принудительное отображение
+            about_window.lift()
+            about_window.attributes('-topmost', True)
+            about_window.after(100, lambda: about_window.attributes('-topmost', False))
+            
+            self.logger.info("Окно 'О программе' успешно создано")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка создания окна 'О программе': {e}")
+
+    def _open_url(self, url):
+        """Открыть ссылку в браузере"""
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception as e:
+            self.logger.error(f"Ошибка открытия ссылки: {e}")
+###
     ##
     def setup_console(self):
         """Настройка консоли Windows"""
@@ -658,6 +777,10 @@ class InternetSpeedMonitor:
                 pystray.MenuItem(
                     "Тест сейчас", 
                     lambda: self.run_speed_test()
+                ),
+                pystray.MenuItem(
+                    "О программе", 
+                    lambda: self.show_about_window()
                 ),
                 pystray.MenuItem(
                     "Выход", 
