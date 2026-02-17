@@ -201,9 +201,6 @@ class InternetSpeedMonitor:
         # Загружаем последние значения измерений
         self.load_last_measurement()
 
-        # Анализируем качество соединения при каждом запуске программы
-        self.root.after(2000, self.analyze_connection_quality)  # Задержка 2 секунды после старта
-
         self.is_first_load = False  # Сбрасываем после загрузки
         self.update_log()         # Обновляем журнал принудительно
        
@@ -214,10 +211,7 @@ class InternetSpeedMonitor:
         # При закрытии окна - сворачиваем в трей и обновляем меню трея
         self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)
         
-        # Запуск мониторинга если настроен автостарт
-        if self.auto_start_var.get():
-            self.start_monitoring()
-        
+       
         # Сворачиваем в трей если включена настройка
         if self.minimize_to_tray_var.get():
             self.minimize_to_tray()
@@ -227,7 +221,16 @@ class InternetSpeedMonitor:
             self.update_tray_menu()
         except Exception:
             pass
-        
+
+###
+        # При автозапуске даем сети время инициализироваться
+        if self.auto_start_var.get():
+            self.logger.info("Автозапуск: ждем 15 секунд для инициализации сети...")
+            self.root.after(15000, self.start_monitoring)  # 15 секунд задержки
+        else:
+            # Обычный запуск - задержка 2 секунды
+            self.root.after(2000, self.analyze_connection_quality)
+###
         ###
         # Флаг начального состояния (старт в трее)
         self.started_in_tray = True        
@@ -1476,7 +1479,10 @@ class InternetSpeedMonitor:
         """Запуск периодического мониторинга"""
         if self.running:
             return
-        
+
+        # Выполняем анализ качества при старте мониторинга
+        self.root.after(1000, self.analyze_connection_quality)
+
         self.running = True
         self.start_button.config(state='disabled')
         self.stop_button.config(state='normal')
@@ -1491,7 +1497,6 @@ class InternetSpeedMonitor:
         
         self.status_var.set("Мониторинг запущен")
         self.logger.info("Мониторинг запущен")
-
 
     def stop_monitoring(self):
         """Остановка мониторинга"""
