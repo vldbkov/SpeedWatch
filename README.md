@@ -126,7 +126,7 @@ cd src
 - Это нормально для некоторых серверов, если они его не предоставляют
 
 Структура проекта
-
+```
 SpeedWatch/
 ├── src/
 │   ├── main.py                 # Основная программа
@@ -140,6 +140,7 @@ SpeedWatch/
 ├── requirements.txt              # Зависимости Python
 ├── README.md                     # Этот файл
 └── README_v1.0.0.md              # Документация для версии 1.0.0
+```
 
 Формат .env файла
 Создайте файл .env в корне проекта:
@@ -169,7 +170,7 @@ pywin32
 Поддержать проект
 
 Если вам нравится SpeedWatch, вы можете поддержать автора:
-[Поддержать на YooMoney](https://img.shields.io/badge/Поддержать-YooMoney-blue?style=for-the-badge&logo=yandex) (https://yoomoney.ru/to/4100119453410920)
+[Поддержать на YooMoney](https://yoomoney.ru/to/4100119453410920)
 
 Лицензия
 
@@ -177,12 +178,5 @@ MIT License
 
 Поддержка
 При возникновении проблем проверьте лог-файл data/speed_monitor.log
-
-[![Release](https://img.shields.io/badge/release-v1.0.0-success)](https://github.com/baykovv/SpeedWatch/releases)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
-[![Windows](https://img.shields.io/badge/platform-windows-0078D6)](https://www.microsoft.com/windows)
-[![Portable](https://img.shields.io/badge/portable-✓-brightgreen)](https://github.com/baykovv/SpeedWatch/releases)
-[![Auto Update](https://img.shields.io/badge/auto_update-enabled-green)](https://github.com/baykovv/SpeedWatch/releases)
-[![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 Сделано с ❤️ для стабильного интернета
