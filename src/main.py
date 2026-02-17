@@ -445,6 +445,18 @@ class InternetSpeedMonitor:
             
             avg_download, avg_upload, avg_ping, avg_jitter, count = result
             
+            # Получаем процент измерений с высоким джиттером
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN jitter > 15 THEN 1 ELSE 0 END) as bad_count
+                FROM speed_measurements 
+                WHERE timestamp >= ?
+            ''', (week_ago,))
+            
+            jitter_stats = cursor.fetchone()
+            total_jitter, bad_jitter = jitter_stats if jitter_stats else (0, 0)
+            
             # Получаем средние значения за предыдущий период для сравнения
             two_weeks_ago = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
             week_before = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
@@ -479,9 +491,11 @@ class InternetSpeedMonitor:
                 increase_percent = (avg_ping / prev_avg_ping - 1) * 100
                 issues.append(f"• Пинг вырос на {increase_percent:.1f}% (с {prev_avg_ping:.1f} до {avg_ping:.1f} ms)")
             
-            # Условие 3: Джиттер выше 15 мс
-            if avg_jitter > 15:
-                issues.append(f"• Джиттер превышает норму: {avg_jitter:.1f} ms (рекомендуется < 15 ms)")
+            # Условие 3: Джиттер часто превышает норму (более 30% измерений)
+            if total_jitter > 0 and bad_jitter > 0 and (bad_jitter / total_jitter) > 0.3:
+                issues.append(f"• Джиттер часто превышает норму: в {bad_jitter} из {total_jitter} измерений (среднее {avg_jitter:.1f} ms)")
+            elif avg_jitter > 15:  # Если средний джиттер высокий, но нечастый
+                issues.append(f"• Средний джиттер превышает норму: {avg_jitter:.1f} ms")
             
             # Если есть проблемы, показываем окно
             if issues:
