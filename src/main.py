@@ -1641,7 +1641,7 @@ class InternetSpeedMonitor:
             self.root.after(0, lambda: self.status_var.set("Запуск теста скорости..."))
             self.logger.info("Запуск теста скорости через openspeedtest-cli...")
 
-            # Путь к скрипту openspeedtest-cli (в той же папке, что и main.py)
+            # Путь к скрипту openspeedtest-cli
             cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
 
             # Проверяем, существует ли файл
@@ -1653,13 +1653,11 @@ class InternetSpeedMonitor:
                 return
 
             # Запускаем процесс с перенаправлением вывода в файл
-            # Создаем временные файлы для вывода
             stdout_temp = tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.txt')
             stderr_temp = tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.txt')
             stdout_temp.close()
             stderr_temp.close()
 
-            # Открываем файлы для записи
             with open(stdout_temp.name, 'w', encoding='utf-8') as out_f, \
                  open(stderr_temp.name, 'w', encoding='utf-8') as err_f:
 
@@ -1670,14 +1668,12 @@ class InternetSpeedMonitor:
                     text=True
                 )
 
-                # Ждем завершения
                 process.wait(timeout=120)
 
-            # Читаем результаты из файлов в бинарном режиме
+            # Читаем результаты
             with open(stdout_temp.name, 'rb') as f:
                 stdout_bytes = f.read()
             
-            # Пробуем разные кодировки
             stdout = None
             for encoding in ['utf-8', 'cp1251', 'cp866']:
                 try:
@@ -1687,85 +1683,84 @@ class InternetSpeedMonitor:
                 except:
                     continue
 
-            # Читаем stderr
             with open(stderr_temp.name, 'rb') as f:
                 stderr_bytes = f.read()
             stderr = stderr_bytes.decode('utf-8', errors='ignore')
 
-            # Удаляем временные файлы
             os.unlink(stdout_temp.name)
             os.unlink(stderr_temp.name)
 
-            # Парсим название сервера из stdout
+            # Парсим название сервера
             server_name = "OpenSpeedTest"
             lines = stdout.split('\n')
             for line in lines:
                 if "Лучший сервер найден:" in line:
                     try:
-                        # Извлекаем название после "Лучший сервер найден:"
                         full = line.split("Лучший сервер найден:", 1)[1].strip()
-                        # Убираем пинг в конце
                         clean = re.sub(r'\s*\(\d+\.?\d*\s*мс\s*\)\s*$', '', full)
-                        # Если есть дублирование, берем первое вхождение
                         if '(' in clean and clean.count('(') > 1:
-                            # Берем только до вторых скобок
                             parts = clean.split('(', 2)
                             server_name = parts[0].strip() + ' (' + parts[1].strip()
                         else:
                             server_name = clean
-                        self.logger.info(f"Сервер: {server_name}")
                         break
                     except:
                         pass
 
-            # Парсим финальные значения из конца вывода
-            download_speed = 0
-            upload_speed = 0
-            ping = 0
-            jitter = 0.0
+            # Парсим значения (инициализируем как None, чтобы отличать от 0)
+            download_speed = None
+            upload_speed = None
+            ping = None
+            jitter = None
 
-            # Ищем последние 50 строк (там финальные результаты)
             lines = stdout.split('\n')[-50:]
             for line in lines:
                 line = line.strip()
                 
-                if "Download:" in line and download_speed == 0:
+                if "Download:" in line and download_speed is None:
                     numbers = re.findall(r"(\d+\.?\d*)", line)
                     if numbers:
                         download_speed = float(numbers[-1])
                         self.logger.info(f"Download: {download_speed:.2f} Mbps")
                 
-                if "Upload:" in line and upload_speed == 0:
+                if "Upload:" in line and upload_speed is None:
                     numbers = re.findall(r"(\d+\.?\d*)", line)
                     if numbers:
                         upload_speed = float(numbers[-1])
                         self.logger.info(f"Upload: {upload_speed:.2f} Mbps")
                 
-                if "Ping:" in line and ping == 0:
+                if "Ping:" in line and ping is None:
                     numbers = re.findall(r"(\d+\.?\d*)", line)
                     if numbers:
                         ping = float(numbers[-1])
                         self.logger.info(f"Ping: {ping:.2f} ms")
                 
-                if "Jitter:" in line and jitter == 0:
+                if "Jitter:" in line and jitter is None:
                     numbers = re.findall(r"(\d+\.?\d*)", line)
                     if numbers:
                         jitter = float(numbers[-1])
                         self.logger.info(f"Jitter: {jitter:.2f} ms")
 
-            if download_speed == 0 or upload_speed == 0:
+            # Проверяем, что получили хотя бы что-то
+            if download_speed is None and upload_speed is None and ping is None and jitter is None:
                 raise Exception("Не удалось получить данные о скорости из вывода CLI")
 
-            # Сохраняем результаты
+            # Сохраняем результаты (даже частичные)
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
 
+            # Обновляем интерфейс с полученными значениями
             self.root.after(0, lambda: self._update_ui_with_results_and_status(
-                download_speed, upload_speed, ping, jitter, server_name,
-                "Тест завершен"
+                download_speed or 0, 
+                upload_speed or 0, 
+                ping or 0, 
+                jitter or 0, 
+                server_name,
+                "Тест завершен (частичные данные)" if (download_speed is None or upload_speed is None) else "Тест завершен"
             ))
 
-            self.logger.info(f"Тест завершен: Download={download_speed:.2f} Mbps, "
-                           f"Upload={upload_speed:.2f} Mbps, Ping={ping:.2f} ms")
+            self.logger.info(f"Тест завершен: Download={download_speed if download_speed is not None else 'N/A'} Mbps, "
+                           f"Upload={upload_speed if upload_speed is not None else 'N/A'} Mbps, "
+                           f"Ping={ping if ping is not None else 'N/A'} ms")
 
         except subprocess.TimeoutExpired:
             process.kill()
@@ -1793,10 +1788,10 @@ class InternetSpeedMonitor:
     ###
     def _update_ui_with_results_and_status(self, download, upload, ping, jitter, server, status_message):
         """Обновление интерфейс с результатами и кастомным статусом"""
-        self.download_var.set(f"{download:.2f} Mbps")
-        self.upload_var.set(f"{upload:.2f} Mbps")
-        self.ping_var.set(f"{ping:.2f} ms")
-        self.jitter_var.set(f"{jitter:.2f} ms")
+        self.download_var.set(f"{download:.2f} Mbps" if download is not None else "Ошибка")
+        self.upload_var.set(f"{upload:.2f} Mbps" if upload is not None else "Ошибка")
+        self.ping_var.set(f"{ping:.2f} ms" if ping is not None else "Ошибка")
+        self.jitter_var.set(f"{jitter:.2f} ms" if jitter is not None else "Ошибка")
         self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
         self.status_var.set(status_message)
         self.test_button.config(state='normal')
@@ -1814,11 +1809,9 @@ class InternetSpeedMonitor:
 
     ###
     def save_test_results(self, download, upload, ping, jitter, server):
-        """Сохранение результатов теста в БД"""
+        """Сохранение результатов теста в БД (поддерживает частичные данные)"""
         try:
-            # ВРЕМЕННАЯ ДИАГНОСТИКА
-            self.logger.info(f"Сохранение в БД: server='{server}'")
-            
+            # Подготавливаем значения: None заменяем на NULL в БД
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -1826,24 +1819,35 @@ class InternetSpeedMonitor:
                 INSERT INTO speed_measurements 
                 (timestamp, download_speed, upload_speed, ping, jitter, server) 
                 VALUES (?, ?, ?, ?, ?, ?)
-            ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), download, upload, ping, jitter, server))
+            ''', (
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), 
+                download,  # может быть None
+                upload,    # может быть None
+                ping,      # может быть None
+                jitter,    # может быть None
+                server
+            ))
             
             conn.commit()
             conn.close()
-###            
-            # Обновляем время последнего измерения
-            current_time = datetime.now().strftime('%d.%m.%y %H:%M')
-            self.last_check_var.set(current_time)
+            
+            # Обновляем время последнего измерения (если есть хоть какие-то данные)
+            if download is not None or upload is not None or ping is not None or jitter is not None:
+                current_time = datetime.now().strftime('%d.%m.%y %H:%M')
+                self.last_check_var.set(current_time)
 
-            # Обновляем отображение текущих значений
-            self.download_var.set(f"{download:.2f} Mbps")
-            self.upload_var.set(f"{upload:.2f} Mbps")
-            self.ping_var.set(f"{ping:.2f} ms")
-            self.jitter_var.set(f"{jitter:.2f} ms")
+            # Обновляем отображение текущих значений (None заменяем на 0)
+            self.download_var.set(f"{download:.2f} Mbps" if download is not None else "0 Mbps")
+            self.upload_var.set(f"{upload:.2f} Mbps" if upload is not None else "0 Mbps")
+            self.ping_var.set(f"{ping:.2f} ms" if ping is not None else "0 ms")
+            self.jitter_var.set(f"{jitter:.2f} ms" if jitter is not None else "0 ms")
             
             # Обновляем журнал и графики
             self.root.after(0, self.update_log)
             self.root.after(0, self.update_graph)
+            
+            # Логируем что сохранили
+            self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
             
         except Error as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
