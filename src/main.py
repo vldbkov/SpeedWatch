@@ -146,7 +146,22 @@ class InternetSpeedMonitor:
             self.create_icon()
         
         self.running = False
-        self.test_in_progress = False  # Флаг выполнения теста        
+
+        self.test_in_progress = False  # Флаг выполнения теста
+
+        # Анимация теста скорости        
+        self.animation_chars = ['-', '\\', '|', '/']  # Символы для анимации
+        self.animation_index = 0
+        self.animation_job = None
+
+        self.animation_chars = ['-', '\\', '|', '/']  # Символы для анимации теста
+        self.animation_index = 0
+        self.animation_job = None
+        
+        # Для анимации ожидания
+        self.wait_animation_dots = 0
+        self.wait_animation_job = None
+
         self.monitor_thread = None
 ###
         # Определяем корневую директорию проекта
@@ -1604,16 +1619,23 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
 
-    ###
+
     def run_speed_test(self):
         """Запуск теста скорости интернета"""
-        if self.test_in_progress:  # Если тест уже выполняется
+        if self.test_in_progress:
             self.logger.warning("Тест уже выполняется, пропускаем")
             return
             
         self.test_in_progress = True
+        
+        # Останавливаем анимацию ожидания
+        self.stop_wait_animation()
+        
         self.status_var.set("Выполняется тест скорости...")
         self.test_button.config(state='disabled')
+        
+        # Запускаем анимацию теста
+        self.start_test_animation()
         
         # Сбрасываем таймер отсчета
         self.next_test_var.set("--:--:--")
@@ -1622,19 +1644,91 @@ class InternetSpeedMonitor:
         test_thread = threading.Thread(target=self._perform_speed_test, daemon=True)
         test_thread.start()
 
-    ###
+    def start_test_animation(self):
+        """Запуск анимации выполнения теста в статус-баре"""
+        if not self.test_in_progress:
+            return
+            
+        # Обновляем статус в окне с анимацией (текст статичный, меняется только слеш)
+        self.animation_index = (self.animation_index + 1) % len(self.animation_chars)
+        status_text = f"Выполняется тест скорости {self.animation_chars[self.animation_index]}"
+        self.status_var.set(status_text)
+        
+        # Запускаем следующее обновление через 200 мс
+        self.animation_job = self.root.after(200, self.start_test_animation)
+
+    def start_wait_animation(self):
+        """Запуск анимации ожидания следующего теста"""
+        if not self.running or self.test_in_progress:
+            return
+            
+        # Обновляем точки
+        self.wait_animation_dots = (self.wait_animation_dots % 3) + 1
+        dots = '.' * self.wait_animation_dots
+        
+        self.status_var.set(f"Отсчет времени до следующей проверки{dots}")
+        
+        # Запускаем следующее обновление через 500 мс
+        self.wait_animation_job = self.root.after(500, self.start_wait_animation)
+
+    def stop_wait_animation(self):
+        """Остановка анимации ожидания"""
+        if self.wait_animation_job:
+            self.root.after_cancel(self.wait_animation_job)
+            self.wait_animation_job = None
+
+    def stop_test_animation(self):
+        """Остановка анимации теста"""
+        if self.animation_job:
+            self.root.after_cancel(self.animation_job)
+            self.animation_job = None
+        
+        # Восстанавливаем статус
+        if self.running:
+            # Если мониторинг работает, запускаем анимацию ожидания
+            self.start_wait_animation()
+        else:
+            self.status_var.set("Ожидание команды")
+            if sys.stdout.isatty():
+                print("\rОжидание команды" + " " * 20, flush=True)
+        
+        # Восстанавливаем статус
+        if self.running:
+            # Если мониторинг работает, запускаем анимацию ожидания
+            self.start_wait_animation()
+        else:
+            self.status_var.set("Ожидание команды")
+
     def _perform_speed_test(self):
         """Выполнение теста скорости через внешний openspeedtest-cli"""
+        # Определяем переменные ДО try, чтобы они были видны везде
+        stop_animation = threading.Event()
+        console_animation_thread = None
+        process = None  # для timeout
+        
         try:
             import os
             import tempfile
             import re
+            
+            # Запускаем анимацию в консоли, если она доступна
+            if sys.stdout.isatty():  # Проверяем, что вывод идет в консоль
+                console_animation_thread = threading.Thread(
+                    target=self._console_animation, 
+                    args=(stop_animation,),
+                    daemon=True
+                )
+                console_animation_thread.start()
             
             # Проверяем интернет-соединение перед началом
             if not self.check_internet_connection():
                 error_msg = "Нет подключения к интернету"
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                # Останавливаем анимацию
+                stop_animation.set()
+                if console_animation_thread and console_animation_thread.is_alive():
+                    console_animation_thread.join(timeout=1)
                 self.test_in_progress = False
                 return
 
@@ -1644,11 +1738,14 @@ class InternetSpeedMonitor:
             # Путь к скрипту openspeedtest-cli
             cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
 
-            # Проверяем, существует ли файл
             if not os.path.exists(cli_path):
                 error_msg = f"Файл openspeedtest-cli не найден по пути: {cli_path}"
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                # Останавливаем анимацию
+                stop_animation.set()
+                if console_animation_thread and console_animation_thread.is_alive():
+                    console_animation_thread.join(timeout=1)
                 self.test_in_progress = False
                 return
 
@@ -1745,6 +1842,11 @@ class InternetSpeedMonitor:
             if download_speed is None and upload_speed is None and ping is None and jitter is None:
                 raise Exception("Не удалось получить данные о скорости из вывода CLI")
 
+            # Останавливаем консольную анимацию
+            stop_animation.set()
+            if console_animation_thread and console_animation_thread.is_alive():
+                console_animation_thread.join(timeout=1)
+
             # Сохраняем результаты (даже частичные)
             self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
 
@@ -1761,20 +1863,32 @@ class InternetSpeedMonitor:
             self.logger.info(f"Тест завершен: Download={download_speed if download_speed is not None else 'N/A'} Mbps, "
                            f"Upload={upload_speed if upload_speed is not None else 'N/A'} Mbps, "
                            f"Ping={ping if ping is not None else 'N/A'} ms")
-
+######
         except subprocess.TimeoutExpired:
-            process.kill()
+            if process:
+                process.kill()
             error_msg = "Тест превысил время ожидания (60 сек)"
             self.logger.error(error_msg)
             self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+            # Останавливаем анимацию
+            stop_animation.set()
+            if console_animation_thread and console_animation_thread.is_alive():
+                console_animation_thread.join(timeout=1)
         except Exception as e:
             error_msg = str(e)
             self.logger.error(f"Ошибка теста скорости: {error_msg}")
             self.root.after(0, lambda msg=error_msg: self._update_ui_with_error(msg))
+            # Останавливаем анимацию
+            stop_animation.set()
+            if console_animation_thread and console_animation_thread.is_alive():
+                console_animation_thread.join(timeout=1)
         finally:
+            # Останавливаем анимацию в статус-баре
+            self.root.after(0, self.stop_test_animation)
             self.test_in_progress = False
             self.root.after(0, lambda: self.test_button.config(state='normal'))
-    ###
+######
+
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
         self.download_var.set(f"{download:.2f} Mbps")
@@ -1807,7 +1921,20 @@ class InternetSpeedMonitor:
         self.test_button.config(state='normal')
         messagebox.showerror("Ошибка", f"Не удалось выполнить тест скорости: {error_msg}")
 
-    ###
+    def _console_animation(self, stop_event):
+        """Анимация в консоли во время теста (мигает только слеш)"""
+        chars = ['-', '\\', '|', '/']
+        i = 0
+        # Печатаем статичный текст один раз
+        print("\rТест выполняется ", end='', flush=True)
+        while not stop_event.is_set():
+            # Обновляем только слеш
+            print(f"\rТест выполняется {chars[i % len(chars)]}", end='', flush=True)
+            i += 1
+            time.sleep(0.2)
+        # После завершения очищаем строку
+        print("\r" + " " * 30 + "\r", end='', flush=True)
+
     def save_test_results(self, download, upload, ping, jitter, server):
         """Сохранение результатов теста в БД (поддерживает частичные данные)"""
         try:
@@ -1879,13 +2006,20 @@ class InternetSpeedMonitor:
     def stop_monitoring(self):
         """Остановка мониторинга"""
         self.running = False
+        
+        # Останавливаем анимацию ожидания
+        self.stop_wait_animation()
+        
+        # Очищаем консоль
+        if sys.stdout.isatty():
+            print("\r" + " " * 50 + "\r", end='', flush=True)
+        
         self.start_button.config(state='normal')
         self.stop_button.config(state='disabled')
-        self.test_button.config(state='normal')  # Добавить эту строку
+        self.test_button.config(state='normal')
         self.status_var.set("Мониторинг остановлен")
         self.next_test_var.set("--:--:--")
         self.logger.info("Мониторинг остановлен")
-
 
     def _monitoring_loop(self):
         """Цикл периодического мониторинга"""
@@ -1906,12 +2040,16 @@ class InternetSpeedMonitor:
                 self.logger.error(f"Ошибка в цикле мониторинга: {e}")
                 time.sleep(60)
 
-    ##
+
     def update_next_test_timer(self):
         """Обновление таймера до следующего теста"""
         if not self.running:
             return
         
+        # НЕ обновляем статус, если выполняется тест
+        if self.test_in_progress:
+            return
+            
         now = datetime.now()
         if self.next_test_time:
             time_left = self.next_test_time - now
@@ -1921,12 +2059,17 @@ class InternetSpeedMonitor:
                 timer_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                 self.next_test_var.set(timer_text)
                 
-                # Добавляем статус с отсчетом времени
-                self.status_var.set(f"Отсчет времени до следующей проверки")
+                # Анимация в консоли (если она открыта)
+                if sys.stdout.isatty():
+                    dots = '.' * ((int(time.time()) % 3) + 1)
+                    print(f"\rСледующий тест через: {timer_text}{dots}   ", end='', flush=True)
+                
+                # Запускаем анимацию ожидания в GUI, если она еще не запущена
+                if not self.wait_animation_job:
+                    self.start_wait_animation()
             else:
                 # Время пришло, обновляем следующее время
                 self.next_test_time = now + timedelta(minutes=self.interval_var.get())
-    ###
 
     def update_log(self):
         """Обновление журнала измерений"""
