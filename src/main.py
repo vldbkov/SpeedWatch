@@ -2207,8 +2207,35 @@ class InternetSpeedMonitor:
                     writer.writerow(['ID', 'Timestamp', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)', 'Jitter (ms)', 'Server'])
                     
                     for row in rows:
-                        # Записываем как есть, без форматирования
-                        writer.writerow(row)
+                        # Форматируем дату из "YYYY-MM-DD HH:MM:SS.ffffff" в "dd-mm-yyyy HH:MM:SS"
+                        timestamp = row[1]
+                        if timestamp and isinstance(timestamp, str):
+                            try:
+                                dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                                formatted_timestamp = dt.strftime('%d-%m-%Y %H:%M:%S')
+                            except:
+                                formatted_timestamp = timestamp
+                        else:
+                            formatted_timestamp = str(timestamp) if timestamp else ""
+                        
+                        # Форматируем значения
+                        download = f"{row[2]:.2f}" if row[2] is not None else ""
+                        upload = f"{row[3]:.2f}" if row[3] is not None else ""
+                        ping = f"{row[4]:.1f}" if row[4] is not None else ""
+                        jitter = f"{row[5]:.1f}" if row[5] is not None else ""
+                        server = row[6] or ""
+                        
+                        formatted_row = (
+                            row[0],
+                            formatted_timestamp,
+                            download,
+                            upload,
+                            ping,
+                            jitter,
+                            server
+                        )
+                        
+                        writer.writerow(formatted_row)
                 
                 self.status_var.set(f"Журнал экспортирован: {filename}")
                 self.logger.info(f"Журнал экспортирован в {filename}")
