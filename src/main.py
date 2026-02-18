@@ -168,7 +168,10 @@ class InternetSpeedMonitor:
         self.logger.info(f"Base directory: {self.base_dir}")         # ПОТОМ используем logger
 
         self.setup_database()
-        
+
+        # Проверяем целостность БД при запуске
+        self.check_database_integrity()
+
         # Управление консолью
         self.console_visible = False  # Начинаем со скрытой консоли
         self.setup_console()
@@ -330,7 +333,88 @@ class InternetSpeedMonitor:
         ''')
         conn.commit()
         conn.close()
-    ##
+###
+    def check_database_integrity(self):
+        """Проверка целостности базы данных при запуске"""
+        try:
+            self.logger.info("Проверка целостности базы данных...")
+            
+            # Подключаемся к БД
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Выполняем проверку целостности
+            cursor.execute("PRAGMA integrity_check")
+            result = cursor.fetchone()
+            
+            # Закрываем соединение
+            conn.close()
+            
+            # Анализируем результат (без Unicode символов)
+            if result and result[0] == "ok":
+                self.logger.info("База данных целостна (OK)")
+                return True
+            else:
+                error_msg = f"База данных повреждена: {result[0] if result else 'Неизвестная ошибка'}"
+                self.logger.error(error_msg)
+                
+                # Спрашиваем пользователя о восстановлении
+                from tkinter import messagebox
+                response = messagebox.askyesno(
+                    "Повреждение базы данных",
+                    "Обнаружено повреждение базы данных с историей измерений.\n\n"
+                    "Хотите создать новую базу данных? (Старая будет переименована)"
+                )
+                
+                if response:
+                    self.recover_database()
+                else:
+                    messagebox.showwarning(
+                        "Внимание",
+                        "Программа продолжит работу, но данные могут быть неполными.\n"
+                        "Рекомендуется перезапустить программу позже."
+                    )
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка при проверке целостности БД: {e}")
+            return False
+
+    def recover_database(self):
+        """Восстановление поврежденной базы данных"""
+        try:
+            import shutil
+            from datetime import datetime
+            
+            # Создаем резервную копию поврежденной БД
+            if os.path.exists(self.db_path):
+                backup_path = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                shutil.copy2(self.db_path, backup_path)
+                self.logger.info(f"Создана резервная копия: {backup_path}")
+                
+                # Удаляем поврежденную БД
+                os.remove(self.db_path)
+                self.logger.info("Поврежденная БД удалена")
+            
+            # Создаем новую БД
+            self.setup_database()
+            
+            from tkinter import messagebox
+            messagebox.showinfo(
+                "База данных восстановлена",
+                f"Создана новая база данных.\n"
+                f"Старая БД сохранена как:\n{backup_path}"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при восстановлении БД: {e}")
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Ошибка восстановления",
+                f"Не удалось восстановить базу данных: {e}"
+            )
+
+###
     def get_last_measurement_time(self):
         """Получение времени последнего измерения из БД"""
         try:
