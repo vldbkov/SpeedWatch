@@ -1541,7 +1541,7 @@ class InternetSpeedMonitor:
             
             conn.commit()
             conn.close()
-            
+           
             # Обновляем автозапуск в реестре
             self.update_autostart()
             
