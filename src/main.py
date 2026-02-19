@@ -1181,31 +1181,32 @@ class InternetSpeedMonitor:
         # Скорость загрузки
         ttk.Label(current_frame, text="Скорость загрузки:", font=self.scale_font('Arial', 12)).grid(row=0, column=0, sticky='w', pady=5)
         self.download_var = tk.StringVar(value="0 Mbps")
-        self.download_label = ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',))
-        self.download_label.grid(row=0, column=1, padx=10)
+        self.download_label = ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
+        self.download_label.grid(row=0, column=1, padx=10, sticky='w')
         
         # Скорость отдачи
         ttk.Label(current_frame, text="Скорость отдачи:", font=self.scale_font('Arial', 12)).grid(row=1, column=0, sticky='w', pady=5)
         self.upload_var = tk.StringVar(value="0 Mbps")
-        self.upload_label = ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',))
-        self.upload_label.grid(row=1, column=1, padx=10)
+        self.upload_label = ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
+        self.upload_label.grid(row=1, column=1, padx=10, sticky='w')
         
         # Пинг
         ttk.Label(current_frame, text="Пинг:", font=self.scale_font('Arial', 12)).grid(row=2, column=0, sticky='w', pady=5)
         self.ping_var = tk.StringVar(value="0 ms")
-        self.ping_label = ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',))
-        self.ping_label.grid(row=2, column=1, padx=10)
+        self.ping_label = ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
+        self.ping_label.grid(row=2, column=1, padx=10, sticky='w')
         
         # Jitter
         ttk.Label(current_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
         self.jitter_var = tk.StringVar(value="0 ms")
-        self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',))
-        self.jitter_label.grid(row=3, column=1, padx=10)
+        self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
+        self.jitter_label.grid(row=3, column=1, padx=10, sticky='w')
         
         # Время последнего измерения
         ttk.Label(current_frame, text="Последнее измерение:", font=self.scale_font('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
         self.last_check_var = tk.StringVar(value="Никогда")
-        ttk.Label(current_frame, textvariable=self.last_check_var, font=self.scale_font('Arial', 11)).grid(row=4, column=1, padx=10)
+        self.last_check_label = ttk.Label(current_frame, textvariable=self.last_check_var, font=self.scale_font('Arial', 11), width=16, anchor='w')
+        self.last_check_label.grid(row=4, column=1, padx=10, sticky='w')
         
         # Фрейм с управлением
         control_frame = ttk.Frame(self.monitor_frame)
