@@ -507,13 +507,85 @@ class InternetSpeedMonitor:
                 self.download_var.set(f"{download:.2f} Mbps")
                 self.upload_var.set(f"{upload:.2f} Mbps")
                 self.ping_var.set(f"{ping:.2f} ms")
-                self.jitter_var.set(f"{jitter:.2f} ms")
+                self.jitter_var.set(f"{jitter:.2f} ms")                
+                self.update_monitor_tab_colors()   # Обновляем цвета согласно нормам
                 self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
             else:
                 self.logger.info("Нет сохраненных измерений")
                 
         except Exception as e:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
+
+    def update_monitor_tab_colors(self):
+        """Обновление цветов на вкладке мониторинга согласно нормам"""
+        try:
+            # Получаем текущие значения
+            download_text = self.download_var.get().replace(' Mbps', '')
+            upload_text = self.upload_var.get().replace(' Mbps', '')
+            ping_text = self.ping_var.get().replace(' ms', '')
+            jitter_text = self.jitter_var.get().replace(' ms', '')
+            
+            # Преобразуем в числа (если не "Ошибка" или "0")
+            try:
+                download = float(download_text) if download_text not in ['Ошибка', '0', ''] else None
+            except:
+                download = None
+                
+            try:
+                upload = float(upload_text) if upload_text not in ['Ошибка', '0', ''] else None
+            except:
+                upload = None
+                
+            try:
+                ping = float(ping_text) if ping_text not in ['Ошибка', '0', ''] else None
+            except:
+                ping = None
+                
+            try:
+                jitter = float(jitter_text) if jitter_text not in ['Ошибка', '0', ''] else None
+            except:
+                jitter = None
+            
+            # Получаем средние значения за неделю для сравнения
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            cursor.execute('''
+                SELECT 
+                    AVG(download_speed) as avg_download,
+                    AVG(ping) as avg_ping
+                FROM speed_measurements 
+                WHERE timestamp >= ? AND download_speed > 0 AND ping > 0
+            ''', (week_ago,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            avg_download = result[0] if result and result[0] else None
+            avg_ping = result[1] if result and result[1] else None
+            
+            # Сбрасываем цвета по умолчанию (черный)
+            self.download_label.config(foreground='black')
+            self.upload_label.config(foreground='black')
+            self.ping_label.config(foreground='black')
+            self.jitter_label.config(foreground='black')
+            
+            # Проверяем скорость скачивания (ниже на 25% от средней)
+            if download is not None and avg_download is not None and download < avg_download * 0.75:
+                self.download_label.config(foreground='red')
+            
+            # Проверяем пинг (выше на 25% от средней)
+            if ping is not None and avg_ping is not None and ping > avg_ping * 1.25:
+                self.ping_label.config(foreground='red')
+            
+            # Проверяем джиттер (выше 15 мс)
+            if jitter is not None and jitter > 15:
+                self.jitter_label.config(foreground='red')
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка обновления цветов мониторинга: {e}")
 
     def analyze_connection_quality(self):
         """Анализ качества соединения за последнюю неделю"""
@@ -1109,22 +1181,26 @@ class InternetSpeedMonitor:
         # Скорость загрузки
         ttk.Label(current_frame, text="Скорость загрузки:", font=self.scale_font('Arial', 12)).grid(row=0, column=0, sticky='w', pady=5)
         self.download_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=0, column=1, padx=10)
+        self.download_label = ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',))
+        self.download_label.grid(row=0, column=1, padx=10)
         
         # Скорость отдачи
         ttk.Label(current_frame, text="Скорость отдачи:", font=self.scale_font('Arial', 12)).grid(row=1, column=0, sticky='w', pady=5)
         self.upload_var = tk.StringVar(value="0 Mbps")
-        ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=1, column=1, padx=10)
+        self.upload_label = ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',))
+        self.upload_label.grid(row=1, column=1, padx=10)
         
         # Пинг
         ttk.Label(current_frame, text="Пинг:", font=self.scale_font('Arial', 12)).grid(row=2, column=0, sticky='w', pady=5)
         self.ping_var = tk.StringVar(value="0 ms")
-        ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=2, column=1, padx=10)
+        self.ping_label = ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',))
+        self.ping_label.grid(row=2, column=1, padx=10)
         
         # Jitter
         ttk.Label(current_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
         self.jitter_var = tk.StringVar(value="0 ms")
-        ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',)).grid(row=3, column=1, padx=10)
+        self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',))
+        self.jitter_label.grid(row=3, column=1, padx=10)
         
         # Время последнего измерения
         ttk.Label(current_frame, text="Последнее измерение:", font=self.scale_font('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
@@ -1964,7 +2040,10 @@ class InternetSpeedMonitor:
             self.upload_var.set(f"{upload:.2f} Mbps" if upload is not None else "0 Mbps")
             self.ping_var.set(f"{ping:.2f} ms" if ping is not None else "0 ms")
             self.jitter_var.set(f"{jitter:.2f} ms" if jitter is not None else "0 ms")
-            
+
+            # Обновляем цвета согласно нормам
+            self.update_monitor_tab_colors()
+
             # Обновляем журнал и графики
             self.root.after(0, self.update_log)
             self.root.after(0, self.update_graph)
