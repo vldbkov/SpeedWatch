@@ -1649,7 +1649,7 @@ class InternetSpeedMonitor:
         except Error as e:
             self.logger.error(f"Ошибка загрузки настроек: {e}")
 
-    ###
+
     def save_settings(self, restart=True, show_message=True):
         """Сохранение настроек в БД"""
         # Защита от повторного вызова
@@ -2710,6 +2710,12 @@ class InternetSpeedMonitor:
         """Перезапуск приложения"""
         self.logger.info("Перезапуск программы...")
         
+        # Сохраняем настройки перед перезапуском
+        self.save_settings(restart=False, show_message=False)
+        
+        # Небольшая задержка для завершения операций
+        time.sleep(0.5)
+        
         if getattr(sys, 'frozen', False):
             # EXE режим - запускаем exe
             executable = sys.executable
@@ -2721,9 +2727,13 @@ class InternetSpeedMonitor:
             args = [python, script_path]
         
         self.logger.info(f"Запуск: {' '.join(args)}")
-        subprocess.Popen(args)
+        
+        # Запускаем новый процесс
+        subprocess.Popen(args, shell=True)
         
         # Завершаем текущий процесс
+        self.root.quit()
+        self.root.destroy()
         os._exit(0)
 
 def check_if_already_running():
