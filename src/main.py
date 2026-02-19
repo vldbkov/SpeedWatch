@@ -2428,9 +2428,17 @@ class InternetSpeedMonitor:
             ax1.grid(True, alpha=0.3)
             ax1.tick_params(axis='both', labelsize=label_fontsize)
             
-            # Форматируем ось X для дат в формате дд.мм.гг
+            # Форматируем ось X в зависимости от выбранного периода
             import matplotlib.dates as mdates
-            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
+            
+            if period == "1 день":
+                # Для 1 дня показываем только время
+                ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                # Поворачиваем подписи для лучшей читаемости
+                ax1.tick_params(axis='x', rotation=45)
+            else:
+                # Для остальных периодов показываем дату
+                ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
             
             # График пинга и джиттера
             if ping_vals:
@@ -2452,8 +2460,11 @@ class InternetSpeedMonitor:
             ax2.grid(True, alpha=0.3)
             ax2.tick_params(axis='both', labelsize=label_fontsize)
             
-            # Форматируем ось X для дат в формате дд.мм.гг
-            ax2.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
+            if period == "1 день":
+                ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                ax2.tick_params(axis='x', rotation=45)
+            else:
+                ax2.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
             
             # Автоматическое форматирование дат
             self.fig.autofmt_xdate()
