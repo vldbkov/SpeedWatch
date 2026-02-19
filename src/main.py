@@ -2055,10 +2055,9 @@ class InternetSpeedMonitor:
                 timer_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                 self.next_test_var.set(timer_text)
                 
-                # Анимация в консоли (если она открыта)
+                # Вывод в консоль ТОЛЬКО таймера, без анимации точками
                 if sys.stdout.isatty():
-                    dots = '.' * ((int(time.time()) % 3) + 1)
-                    print(f"\rСледующий тест через: {timer_text}{dots}   ", end='', flush=True)
+                    print(f"\rСледующий тест через: {timer_text}   ", end='', flush=True)
                 
                 # Запускаем анимацию ожидания в GUI, если она еще не запущена
                 if not self.wait_animation_job:
