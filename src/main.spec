@@ -1,11 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import sys
+from PyInstaller.utils.hooks import collect_data_files
+
+# Принудительно указываем путь к иконке
+icon_file = 'icon.ico'
+if not os.path.exists(icon_file):
+    # Если иконки нет в текущей папке, ищем в src
+    if os.path.exists(os.path.join('src', icon_file)):
+        icon_file = os.path.join('src', icon_file)
+
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
     datas=[
-        ('icon.ico', '.'),
+        (icon_file, '.'),
+        ('openspeedtest-cli-fixed', '.'),
     ],
     hiddenimports=[
         'tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog',
@@ -21,6 +33,12 @@ a = Analysis(
     excludes=[],
     noarchive=False,
 )
+
+# Добавляем данные для matplotlib
+datas_matplotlib = collect_data_files('matplotlib')
+for data in datas_matplotlib:
+    if data not in a.datas:
+        a.datas.append(data)
 
 pyz = PYZ(a.pure, a.zipped_data)
 
@@ -38,7 +56,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
-    icon='icon.ico'
+    icon=icon_file
 )
 
 exe_windowed = EXE(
@@ -55,5 +73,5 @@ exe_windowed = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
-    icon='icon.ico'
+    icon=icon_file
 )
