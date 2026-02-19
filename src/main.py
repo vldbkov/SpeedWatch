@@ -355,13 +355,19 @@ class InternetSpeedMonitor:
 
     def setup_logging(self):
         """Настройка логирования"""
-        log_path = os.path.join(self.base_dir, "data", "speed_monitor.log")
+        # Используем self.data_dir (уже определен в __init__)
+        log_dir = self.data_dir
+        
+        # Создаем директорию если её нет
+        os.makedirs(log_dir, exist_ok=True)
+        
+        log_path = os.path.join(log_dir, "speed_monitor.log")
         
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_path),
+                logging.FileHandler(log_path, encoding='utf-8'),
                 logging.StreamHandler()
             ]
         )
