@@ -47,6 +47,18 @@ def safe_print(text, end='\n', flush=False):
 
 __version__ = "1.0.0"
 
+def parse_arguments():
+    """Парсинг аргументов командной строки"""
+    import argparse
+    parser = argparse.ArgumentParser(description='SpeedWatch - Мониторинг скорости интернета')
+    parser.add_argument('--test-mode', action='store_true', 
+                       help='Запуск в тестовом режиме (без GUI, вывод в консоль)')
+    return parser.parse_args()
+
+# Парсим аргументы при запуске
+ARGS = parse_arguments()
+TEST_MODE = ARGS.test_mode
+
 # Определяем корневую директорию проекта
 if getattr(sys, 'frozen', False):
     # Запуск из exe
@@ -2754,14 +2766,67 @@ def check_if_already_running():
         # Если ошибка - даем разрешение на запуск (лучше двойной запуск, чем запирание)
         return False
 
+def parse_arguments():
+    """Парсинг аргументов командной строки"""
+    import argparse
+    parser = argparse.ArgumentParser(description='SpeedWatch - Мониторинг скорости интернета')
+    parser.add_argument('--test-mode', action='store_true', 
+                       help='Запуск в тестовом режиме (без GUI, вывод в консоль)')
+    return parser.parse_args()
+
+# Парсим аргументы при запуске
+ARGS = parse_arguments()
+TEST_MODE = ARGS.test_mode
 
 def main():
     global _lock_file
 
     # Диагностика автозапуска
-    print(f"[DEBUG] Запуск из: {os.path.abspath(sys.argv[0])}")
-    print(f"[DEBUG] Рабочая директория: {os.getcwd()}")
-    print(f"[DEBUG] Python: {sys.executable}")
+    safe_print(f"[DEBUG] Запуск из: {os.path.abspath(sys.argv[0])}")
+    safe_print(f"[DEBUG] Рабочая директория: {os.getcwd()}")
+    safe_print(f"[DEBUG] Python: {sys.executable}")
+
+    # Тестовый режим - быстрая проверка работоспособности
+    if TEST_MODE:
+        safe_print("\n" + "="*50)
+        safe_print("ТЕСТОВЫЙ РЕЖИМ")
+        safe_print("="*50)
+        
+        # Проверка 1: Создание директории данных
+        if getattr(sys, 'frozen', False):
+            test_dir = os.path.join(os.environ.get('APPDATA', ''), 'SpeedWatch', 'data')
+        else:
+            test_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        
+        safe_print(f"Директория данных: {test_dir}")
+        os.makedirs(test_dir, exist_ok=True)
+        safe_print(f"✓ Директория данных создана/существует")
+        
+        # Проверка 2: Подключение к БД
+        try:
+            import sqlite3
+            test_db = os.path.join(test_dir, "test.db")
+            conn = sqlite3.connect(test_db)
+            conn.execute("CREATE TABLE IF NOT EXISTS test (id INTEGER)")
+            conn.close()
+            os.remove(test_db)
+            safe_print(f"✓ SQLite работает")
+        except Exception as e:
+            safe_print(f"✗ Ошибка SQLite: {e}")
+        
+        # Проверка 3: Импорт всех библиотек
+        libs = ['tkinter', 'matplotlib', 'PIL', 'pystray', 'psutil', 'requests']
+        for lib in libs:
+            try:
+                __import__(lib)
+                safe_print(f"✓ {lib} импортирован")
+            except Exception as e:
+                safe_print(f"✗ {lib} не импортирован: {e}")
+        
+        safe_print("\n" + "="*50)
+        safe_print("ТЕСТ ЗАВЕРШЕН")
+        safe_print("="*50)
+        return  # Выход после теста
 
     try:
         # Проверка через файловую блокировку
@@ -2794,7 +2859,7 @@ def main():
                                 f"Подробности в файле crash_error.log")
             root.destroy()
         except:
-            print(error_msg)
+            safe_print(error_msg)
             input("Нажмите Enter для выхода...")
         
     finally:
@@ -2816,17 +2881,17 @@ def main():
                 
                 _lock_file.close()
                 _lock_file = None
-                print("[DEBUG] Лок освобожден при выходе")
+                safe_print("[DEBUG] Лок освобожден при выходе")
             except Exception as e:
-                print(f"[DEBUG] Ошибка освобождения лока: {e}")
+                safe_print(f"[DEBUG] Ошибка освобождения лока: {e}")
         
         # Гарантированно удаляем файл лока
         try:
             if os.path.exists(_lock_file_path):
                 os.remove(_lock_file_path)
-                print(f"[DEBUG] Файл лока удален: {_lock_file_path}")
+                safe_print(f"[DEBUG] Файл лока удален: {_lock_file_path}")
         except Exception as e:
-            print(f"[DEBUG] Ошибка удаления файла лока: {e}")
+            safe_print(f"[DEBUG] Ошибка удаления файла лока: {e}")
 
 
 if __name__ == "__main__":
