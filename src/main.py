@@ -163,7 +163,7 @@ class InternetSpeedMonitor:
         self.wait_animation_job = None
 
         self.monitor_thread = None
-###
+
         # Определяем корневую директорию проекта
         if getattr(sys, 'frozen', False):
             self.base_dir = os.path.dirname(sys.executable)
@@ -241,7 +241,7 @@ class InternetSpeedMonitor:
         except Exception:
             pass
 
-###
+
         # При автозапуске даем сети время инициализироваться
         if self.auto_start_var.get():
             self.logger.info("Автозапуск: ждем 15 секунд для инициализации сети...")
@@ -348,7 +348,7 @@ class InternetSpeedMonitor:
         ''')
         conn.commit()
         conn.close()
-###
+
     def check_database_integrity(self):
         """Проверка целостности базы данных при запуске"""
         try:
@@ -429,7 +429,7 @@ class InternetSpeedMonitor:
                 f"Не удалось восстановить базу данных: {e}"
             )
 
-###
+
     def get_last_measurement_time(self):
         """Получение времени последнего измерения из БД"""
         try:
@@ -488,7 +488,7 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка получения даты первого измерения: {e}")
             return datetime(2026, 1, 1).date()
 
-###
+
     def load_last_measurement(self):
         """Загрузка последнего измерения из БД для отображения при старте"""
         try:
@@ -514,7 +514,7 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
-###
+
     def analyze_connection_quality(self):
         """Анализ качества соединения за последнюю неделю"""
         conn = None
@@ -609,7 +609,7 @@ class InternetSpeedMonitor:
             # Гарантированно закрываем соединение, если оно еще открыто
             if conn:
                 conn.close()
-###
+
     def show_quality_warning(self, issues, avg_download, avg_upload, avg_ping, avg_jitter, count):
         """Показать предупреждение о низком качестве соединения"""
         
@@ -634,7 +634,7 @@ class InternetSpeedMonitor:
             "Качество соединения",
             message
         ))
-###
+
     def show_about_window(self):
         """Показать окно 'О программе'"""
         try:
@@ -746,7 +746,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка создания окна 'О программе': {e}")
 
-###
+
     def check_for_updates(self):
         """Проверка наличия обновлений на GitHub"""
         try:
@@ -813,7 +813,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений: {e}")
             messagebox.showerror("Ошибка", f"Не удалось проверить обновления: {e}")
-###
+
     def _check_updates_auto(self):
         """Автоматическая проверка обновлений при старте (без диалогов)"""
         try:
@@ -845,7 +845,7 @@ class InternetSpeedMonitor:
             self.logger.warning(f"Ошибка сети при авто-проверке обновлений: {e}")
         except Exception as e:
             self.logger.error(f"Ошибка при авто-проверке обновлений: {e}")
-###
+
     def _show_update_notification(self, new_version, download_url):
         """Показать уведомление о новой версии"""
         try:
@@ -863,7 +863,7 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка при показе уведомления: {e}")
-###
+
     def _is_newer_version(self, latest, current):
         """Сравнение версий в формате x.y.z"""
         try:
@@ -881,7 +881,7 @@ class InternetSpeedMonitor:
         except:
             # Если не удалось распарсить, сравниваем как строки
             return latest > current
-###
+
 
     def _open_url(self, url):
         """Открыть ссылку в браузере"""
@@ -890,8 +890,7 @@ class InternetSpeedMonitor:
             webbrowser.open(url)
         except Exception as e:
             self.logger.error(f"Ошибка открытия ссылки: {e}")
-###
-    ##
+
     def setup_console(self):
         """Настройка консоли Windows"""
         try:
@@ -970,7 +969,6 @@ class InternetSpeedMonitor:
                     
         except Exception as e:
             self.logger.error(f"Ошибка переключения консоли: {e}")
-    ###
     def hide_console(self):
         """Принудительно скрыть консольное окно"""
         try:
@@ -981,7 +979,6 @@ class InternetSpeedMonitor:
                 self.logger.info("Консоль скрыта при выходе")
         except Exception as e:
             self.logger.error(f"Ошибка скрытия консоли: {e}")
-    ###
     def update_tray_menu(self):
         """Обновление меню в трее"""
         try:
@@ -1038,7 +1035,7 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка обновления меню трея: {e}")
-            
+          
 
     def create_icon(self):
         """Создание простой иконки если файла нет"""
@@ -1055,7 +1052,7 @@ class InternetSpeedMonitor:
         except:
             pass
 
-    ###
+
     def create_widgets(self):
         """Создание виджетов интерфейса"""
         # Конфигурируем стили для высокого разрешения
@@ -1102,8 +1099,7 @@ class InternetSpeedMonitor:
         
         # Заполняем вкладку настроек
         self.setup_settings_tab()
-    ###
-    ###
+
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
         # Фрейм с текущими показателями
@@ -1159,7 +1155,7 @@ class InternetSpeedMonitor:
         self.status_var.set("Готов к работе")
         status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=5)
         status_bar.pack(fill='x', padx=self.scale_value(15), pady=(0, self.scale_value(15)))
-    ###
+
 
     def setup_graph_tab(self):
         """Настройка вкладки с графиками"""
@@ -1863,7 +1859,7 @@ class InternetSpeedMonitor:
             self.logger.info(f"Тест завершен: Download={download_speed if download_speed is not None else 'N/A'} Mbps, "
                            f"Upload={upload_speed if upload_speed is not None else 'N/A'} Mbps, "
                            f"Ping={ping if ping is not None else 'N/A'} ms")
-######
+
         except subprocess.TimeoutExpired:
             if process:
                 process.kill()
@@ -1887,7 +1883,7 @@ class InternetSpeedMonitor:
             self.root.after(0, self.stop_test_animation)
             self.test_in_progress = False
             self.root.after(0, lambda: self.test_button.config(state='normal'))
-######
+
 
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
@@ -1899,7 +1895,7 @@ class InternetSpeedMonitor:
         self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
         self.status_var.set("Тест завершен")
         self.test_button.config(state='normal')
-    ###
+
     def _update_ui_with_results_and_status(self, download, upload, ping, jitter, server, status_message):
         """Обновление интерфейс с результатами и кастомным статусом"""
         self.download_var.set(f"{download:.2f} Mbps" if download is not None else "Ошибка")
@@ -1910,7 +1906,7 @@ class InternetSpeedMonitor:
         self.status_var.set(status_message)
         self.test_button.config(state='normal')
 
-    ###
+
     def _update_ui_with_error(self, error_msg):
         """Обновление интерфейс при ошибке"""
         self.download_var.set("Ошибка")
@@ -1978,7 +1974,7 @@ class InternetSpeedMonitor:
             
         except Error as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
-    ###
+
 
     def start_monitoring(self):
         """Запуск периодического мониторинга"""
@@ -2136,7 +2132,7 @@ class InternetSpeedMonitor:
                 self.avg_upload_var.set("0 Mbps")
                 self.avg_ping_var.set("0 ms")
                 self.avg_jitter_var.set("0 ms")
-###
+
             # Добавляем данные в таблицу с форматированием
             for row in rows:
                 # Форматируем дату из формата "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
@@ -2194,7 +2190,7 @@ class InternetSpeedMonitor:
                 
                 # Вставляем строку ТОЛЬКО ОДИН РАЗ
                 item_id = self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
-###
+
             conn.close()
             
             # Обновляем статус
@@ -2203,7 +2199,7 @@ class InternetSpeedMonitor:
         except Error as e:
             self.logger.error(f"Ошибка обновления журнала: {e}")
             self.status_var.set(f"Ошибка загрузки журнала: {e}")
-    ###
+
     def auto_resize_columns(self):
         """Автоматическая настройка ширины столбцов в журнале"""
         try:
@@ -2227,7 +2223,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка автонастройки столбцов: {e}")           
           
-    ###
+
     def update_graph(self):
         """Обновление графиков"""
         try:
@@ -2265,7 +2261,7 @@ class InternetSpeedMonitor:
                        ha='center', va='center', transform=ax.transAxes)
                 self.canvas.draw()
                 return
-###            
+          
             # Подготавливаем данные
             timestamps = [row[0] for row in data]
             download_speeds = [row[1] for row in data]
@@ -2323,7 +2319,7 @@ class InternetSpeedMonitor:
                 jitter_ts, jitter_vals = zip(*jitter_valid)
             else:
                 jitter_ts, jitter_vals = [], []
-###            
+           
             # Создаем графики
             ax1 = self.fig.add_subplot(211)
             ax2 = self.fig.add_subplot(212)
@@ -2394,7 +2390,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка обновления графика: {e}")
             self.status_var.set(f"Ошибка обновления графика: {e}")
-    ###
+
 
     def export_graph(self):
         """Экспорт графика в PNG"""
@@ -2415,7 +2411,7 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
 
-    ###
+
     def export_log(self):
         """Экспорт журнала в CSV (сырые данные из БД)"""
         try:
@@ -2475,7 +2471,6 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка экспорта журнала: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
-###
 
     def clear_log(self):
         """Очистка журнала"""
