@@ -24,6 +24,27 @@ from datetime import datetime
 import sqlite3
 import sys
 import traceback
+
+# Настройка кодировки для EXE
+if hasattr(sys, 'frozen'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except:
+        pass
+
+def safe_print(text, end='\n', flush=False):
+    """Безопасный вывод текста в консоль для EXE режима"""
+    try:
+        print(text, end=end, flush=flush)
+    except UnicodeEncodeError:
+        try:
+            print(text.encode('cp1251', errors='ignore').decode('cp1251'), end=end, flush=flush)
+        except:
+            pass
+    except:
+        pass
+
 __version__ = "1.0.0"
 
 # Определяем корневую директорию проекта
