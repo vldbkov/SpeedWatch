@@ -63,13 +63,22 @@ TEST_MODE = ARGS.test_mode
 if getattr(sys, 'frozen', False):
     # Запуск из exe
     base_dir = os.path.dirname(sys.executable)
+    # В EXE режиме используем AppData для данных
+    appdata_dir = os.path.join(os.environ.get('APPDATA', ''), 'SpeedWatch')
+    data_dir = os.path.join(appdata_dir, 'data')
+    os.makedirs(data_dir, exist_ok=True)
 else:
     # Запуск из скрипта - поднимаемся на уровень выше src
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(base_dir, 'data')
 
-# Меняем рабочую директорию
-os.chdir(base_dir)
-print(f"[AUTOSTART] Установлена рабочая директория: {os.getcwd()}")
+# Меняем рабочую директорию (только для dev режима)
+if not getattr(sys, 'frozen', False):
+    os.chdir(base_dir)
+    print(f"[AUTOSTART] Установлена рабочая директория: {os.getcwd()}")
+else:
+    # В EXE режиме не меняем рабочую директорию
+    print(f"[AUTOSTART] Запуск из EXE: {base_dir}")
 
 def crash_handler(exctype, value, tb):
     """Обработчик критических ошибок"""
@@ -142,9 +151,16 @@ class InternetSpeedMonitor:
         # Определяем корневую директорию проекта
         if getattr(sys, 'frozen', False):
             self.base_dir = os.path.dirname(sys.executable)
+            # В EXE режиме используем AppData для данных
+            appdata_dir = os.path.join(os.environ.get('APPDATA', ''), 'SpeedWatch')
+            self.data_dir = os.path.join(appdata_dir, 'data')
         else:
             # Запуск из скрипта - поднимаемся на уровень выше src
             self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.data_dir = os.path.join(self.base_dir, 'data')
+
+        # Создаем директорию для данных
+        os.makedirs(self.data_dir, exist_ok=True)
 
         print("[DEBUG] InternetSpeedMonitor __init__ started")
         try:
@@ -1497,10 +1513,16 @@ class InternetSpeedMonitor:
             ###
             # Загружаем иконку из файла
             try:
-                icon_path = os.path.join(self.base_dir, "src", "icon.ico")
+                if getattr(sys, 'frozen', False):
+                    # EXE режим - иконка рядом с exe
+                    icon_path = os.path.join(self.base_dir, "icon.ico")
+                else:
+                    # Режим разработки - иконка в папке src
+                    icon_path = os.path.join(self.base_dir, "src", "icon.ico")
+                
                 image = Image.open(icon_path)
                 # При необходимости измените размер
-                image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                image = image.resize((64, 64), Image.Resampling.LANCZOS)                
             except Exception as e:
                 self.logger.error(f"Не удалось загрузить иконку для трея: {e}")
                 # Запасной вариант - создаем простую иконку
@@ -1699,8 +1721,12 @@ class InternetSpeedMonitor:
             if not os.path.exists(pythonw_path):
                 pythonw_path = sys.executable
             
-            # ПРАВИЛЬНЫЙ путь к скрипту (src/main.py)
-            script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "main.py")
+            if getattr(sys, 'frozen', False):
+                # EXE режим - путь к exe файлу
+                script_path = sys.executable
+            else:
+                # Режим разработки - путь к main.py
+                script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "main.py")
             
             # Проверяем существование файла
             if not os.path.exists(script_path):
@@ -2678,16 +2704,18 @@ class InternetSpeedMonitor:
         """Перезапуск приложения"""
         self.logger.info("Перезапуск программы...")
         
-        # Определяем путь к скрипту
         if getattr(sys, 'frozen', False):
-            script_path = sys.executable
+            # EXE режим - запускаем exe
+            executable = sys.executable
+            args = [executable]
         else:
-            script_path = os.path.abspath(__file__)  # Текущий файл (main.py)
+            # Режим разработки - запускаем через python
+            python = sys.executable
+            script_path = os.path.abspath(__file__)
+            args = [python, script_path]
         
-        # Перезапускаем программу
-        python = sys.executable
-        self.logger.info(f"Запуск: {python} {script_path}")
-        subprocess.Popen([python, script_path])
+        self.logger.info(f"Запуск: {' '.join(args)}")
+        subprocess.Popen(args)
         
         # Завершаем текущий процесс
         os._exit(0)
