@@ -640,6 +640,7 @@ class InternetSpeedMonitor:
                     self.provider_var.set("—")
                     self.ip_address_var.set("—")
                     self.connection_type_var.set("—")
+                    self.server_info_var.set("—")  # <-- ДОБАВИТЬ эту строку
                     
                     # Определяем тип подключения (временно, пока нет данных)
                     self.connection_type_var.set("—")
