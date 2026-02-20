@@ -1679,26 +1679,46 @@ class InternetSpeedMonitor:
             # Обновляем автозапуск в реестре
             self.update_autostart()
             
-            if restart and show_message:
+            if show_message:
+                # Применяем настройки без перезапуска
+                self.apply_settings()
+                
                 messagebox.showinfo(
                     "Настройки сохранены", 
-                    "Настройки успешно сохранены!\n\n"
-                    "Программа будет перезапущена для применения изменений."
+                    "Настройки успешно сохранены и применены!"
                 )
-                self.logger.info("Настройки сохранены, выполняю перезапуск")
-                
-                # Откладываем перезапуск, чтобы окно сообщения закрылось
-                self.root.after(100, self.restart_app)
-            elif show_message:
-                messagebox.showinfo("Настройки сохранены", "Настройки успешно сохранены!")
-                self.logger.info("Настройки сохранены")
+                self.logger.info("Настройки сохранены и применены")
             
         except Error as e:
             self.logger.error(f"Ошибка сохранения настроек: {e}")
             messagebox.showerror("Ошибка", f"Не удалось сохранить настройки: {e}")
         finally:
             self._saving_settings = False
-            
+
+    def apply_settings(self):
+        """Применить настройки без перезапуска программы"""
+        self.logger.info("Применение настроек...")
+        
+        # 1. Обновить интервал мониторинга
+        if hasattr(self, 'running') and self.running:
+            # Если мониторинг запущен - перезапустим его с новым интервалом
+            self.logger.info(f"Перезапуск мониторинга с новым интервалом: {self.interval_var.get()} мин")
+            self.stop_monitoring()
+            # Небольшая задержка перед запуском
+            self.root.after(500, self.start_monitoring)
+        else:
+            self.logger.info("Мониторинг не активен, интервал будет применен при следующем запуске")
+        
+        # 2. Обновить название в трее (если нужно)
+        if hasattr(self, 'tray_icon'):
+            try:
+                self.tray_icon.title = "SpeedWatch - Мониторинг скорости"
+                self.logger.info("Название в трее обновлено")
+            except:
+                pass
+        
+        self.logger.info("Настройки применены")
+
     def reset_date_filter(self):
         """Сброс фильтра по дате"""
         first_date = self.get_first_measurement_date()
@@ -1874,12 +1894,19 @@ class InternetSpeedMonitor:
             self.logger.info("Запуск теста скорости через openspeedtest-cli...")
 
             # Путь к скрипту openspeedtest-cli
-            cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
+            if getattr(sys, 'frozen', False):
+                # В EXE режиме файл рядом с exe
+                cli_path = os.path.join(os.path.dirname(sys.executable), "openspeedtest-cli-fixed")
+            else:
+                # В режиме разработки файл в папке src
+                cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
 
             if not os.path.exists(cli_path):
                 error_msg = f"Файл openspeedtest-cli не найден по пути: {cli_path}"
+
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+
                 # Останавливаем анимацию
                 stop_animation.set()
                 if console_animation_thread and console_animation_thread.is_alive():
@@ -2714,24 +2741,32 @@ class InternetSpeedMonitor:
         self.save_settings(restart=False, show_message=False)
         
         # Небольшая задержка для завершения операций
-        time.sleep(0.5)
+        time.sleep(1)
         
         if getattr(sys, 'frozen', False):
             # EXE режим - запускаем exe
             executable = sys.executable
             args = [executable]
+            self.logger.info(f"Запуск EXE: {executable}")
         else:
             # Режим разработки - запускаем через python
             python = sys.executable
             script_path = os.path.abspath(__file__)
             args = [python, script_path]
+            self.logger.info(f"Запуск скрипта: {python} {script_path}")
         
-        self.logger.info(f"Запуск: {' '.join(args)}")
+        self.logger.info(f"Команда: {' '.join(args)}")
         
         # Запускаем новый процесс
-        subprocess.Popen(args, shell=True)
+        try:
+            subprocess.Popen(args, shell=True)
+            self.logger.info("Новый процесс запущен")
+        except Exception as e:
+            self.logger.error(f"Ошибка запуска нового процесса: {e}")
+            return
         
         # Завершаем текущий процесс
+        self.logger.info("Завершение текущего процесса")
         self.root.quit()
         self.root.destroy()
         os._exit(0)
