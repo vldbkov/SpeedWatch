@@ -255,7 +255,14 @@ class InternetSpeedMonitor:
         self.server_info_var = tk.StringVar(value="—")
         self.ip_address_var = tk.StringVar(value="—")
         # ===================================================
-        
+
+        # === НАСТРАИВАЕМЫЕ ПОРОГИ ===
+        self.download_threshold_var = tk.IntVar(value=25)  # % падения скорости
+        self.ping_threshold_var = tk.IntVar(value=100)     # % роста пинга
+        self.jitter_threshold_var = tk.IntVar(value=15)    # мс
+        self.jitter_frequency_var = tk.IntVar(value=30)    # % частоты превышений
+        # ===========================
+
         # Создание интерфейса
         self.create_widgets()
         
@@ -675,7 +682,7 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
 
     def update_monitor_tab_colors(self):
-        """Обновление цветов на вкладке мониторинга согласно нормам"""
+        """Обновление цветов на вкладке моторинга согласно нормам"""
         try:
             # Получаем текущие значения
             download_text = self.download_var.get().replace(' Mbps', '')
@@ -724,7 +731,7 @@ class InternetSpeedMonitor:
             avg_download = result[0] if result and result[0] else None
             avg_ping = result[1] if result and result[1] else None
             
-            # <<<--- НОВОЕ: Получаем заявленную скорость из настроек --->>>
+            # Получаем заявленную скорость из настроек
             planned_speed = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
             
             # Сбрасываем цвета по умолчанию (черный)
@@ -734,20 +741,20 @@ class InternetSpeedMonitor:
             self.jitter_label.config(foreground='black')
             
             # Проверка 1: Скорость ниже заявленной (если задана)
-            if download is not None and planned_speed > 0 and download < planned_speed * 0.7:
+            if download is not None and planned_speed > 0 and download < planned_speed * (1 - self.download_threshold_var.get()/100):
                 self.download_label.config(foreground='red')
                 self.logger.info(f"Скорость ниже заявленной: {download:.2f} < {planned_speed} (на {((planned_speed-download)/planned_speed*100):.1f}%)")
             
-            # Проверка 2: Скорость скачивания ниже на 25% от средней (как резерв)
+            # Проверка 2: Скорость ниже средней (как резерв)
             elif download is not None and avg_download is not None and download < avg_download * 0.75:
                 self.download_label.config(foreground='red')
             
-            # Проверяем пинг (выше на 25% от средней)
-            if ping is not None and avg_ping is not None and ping > avg_ping * 1.25:
+            # Проверка 3: Пинг выше средней
+            if ping is not None and avg_ping is not None and ping > avg_ping * (1 + self.ping_threshold_var.get()/100):
                 self.ping_label.config(foreground='red')
             
-            # Проверяем джиттер (выше 15 мс)
-            if jitter is not None and jitter > 15:
+            # Проверка 4: Джиттер выше порога
+            if jitter is not None and jitter > self.jitter_threshold_var.get():
                 self.jitter_label.config(foreground='red')
             
         except Exception as e:
@@ -812,10 +819,10 @@ class InternetSpeedMonitor:
             cursor.execute('''
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN jitter > 15 THEN 1 ELSE 0 END) as bad_count
+                    SUM(CASE WHEN jitter > ? THEN 1 ELSE 0 END) as bad_count
                 FROM speed_measurements 
                 WHERE timestamp >= ?
-            ''', (week_ago,))
+            ''', (self.jitter_threshold_var.get(), week_ago))
             
             jitter_stats = cursor.fetchone()
             total_jitter, bad_jitter = jitter_stats if jitter_stats else (0, 0)
@@ -841,24 +848,34 @@ class InternetSpeedMonitor:
             prev_avg_download = prev_result[0] if prev_result and prev_result[0] else avg_download
             prev_avg_ping = prev_result[1] if prev_result and prev_result[1] else avg_ping
             
-            # Проверяем условия
+            # Получаем заявленную скорость из настроек
+            planned_speed = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
+            
+            # Проверяем условия (два типа проверок)
             issues = []
             
-            # Условие 1: Скорость скачивания ниже на 25%+
-            if prev_avg_download > 0 and avg_download < prev_avg_download * 0.75:
+            # === ПРОВЕРКА 1: Отклонение от заявленной скорости (для претензий к провайдеру) ===
+            if planned_speed > 0 and avg_download < planned_speed * (1 - self.download_threshold_var.get()/100):
+                drop_percent = (1 - avg_download / planned_speed) * 100
+                issues.append(f"• Скорость скачивания ниже заявленной на {drop_percent:.1f}% (тариф {planned_speed} Mbps)")
+            
+            # === ПРОВЕРКА 2: Отклонение от средней (для обнаружения внезапных проблем) ===
+            if prev_avg_download > 0 and avg_download < prev_avg_download * (1 - self.download_threshold_var.get()/100):
                 drop_percent = (1 - avg_download / prev_avg_download) * 100
-                issues.append(f"• Скорость скачивания упала на {drop_percent:.1f}% (с {prev_avg_download:.1f} до {avg_download:.1f} Mbps)")
+                issues.append(f"• Скорость скачивания упала на {drop_percent:.1f}% от обычной (было {prev_avg_download:.1f}, стало {avg_download:.1f} Mbps)")
             
-            # Условие 2: Пинг выше на 100%+
-            if prev_avg_ping > 0 and avg_ping > prev_avg_ping * 2:
+            # === ПРОВЕРКА 3: Отклонение пинга от средней ===
+            if prev_avg_ping > 0 and avg_ping > prev_avg_ping * (1 + self.ping_threshold_var.get()/100):
                 increase_percent = (avg_ping / prev_avg_ping - 1) * 100
-                issues.append(f"• Пинг вырос на {increase_percent:.1f}% (с {prev_avg_ping:.1f} до {avg_ping:.1f} ms)")
+                issues.append(f"• Пинг вырос на {increase_percent:.1f}% от обычного (было {prev_avg_ping:.1f}, стало {avg_ping:.1f} ms)")
             
-            # Условие 3: Джиттер часто превышает норму (более 30% измерений)
-            if total_jitter > 0 and bad_jitter > 0 and (bad_jitter / total_jitter) > 0.3:
+            # === ПРОВЕРКА 4: Джиттер (два варианта) ===
+            # Вариант 4а: Частое превышение порога
+            if total_jitter > 0 and bad_jitter > 0 and (bad_jitter / total_jitter) > (self.jitter_frequency_var.get() / 100):
                 issues.append(f"• Джиттер часто превышает норму: в {bad_jitter} из {total_jitter} измерений (среднее {avg_jitter:.1f} ms)")
-            elif avg_jitter > 15:  # Если средний джиттер высокий, но нечастый
-                issues.append(f"• Средний джиттер превышает норму: {avg_jitter:.1f} ms")
+            # Вариант 4б: Средний джиттер выше порога
+            elif avg_jitter > self.jitter_threshold_var.get():
+                issues.append(f"• Средний джиттер превышает норму: {avg_jitter:.1f} ms (порог {self.jitter_threshold_var.get()} ms)")
             
             # Если есть проблемы, показываем окно
             if issues:
@@ -1637,26 +1654,56 @@ class InternetSpeedMonitor:
         speed_spinbox = ttk.Spinbox(settings_frame, from_=0, to=10000, textvariable=self.planned_speed_var, width=10, font=self.scale_font('Arial', 10))
         speed_spinbox.grid(row=1, column=1, padx=10, sticky='w')
         ttk.Label(settings_frame, text="(0 = не учитывать)", font=self.scale_font('Arial', 8), foreground='gray').grid(row=1, column=2, sticky='w', padx=5)
-        
+
+        # === НОВЫЙ РАЗДЕЛ: Пороги качества ===
+        thresholds_frame = ttk.LabelFrame(settings_frame, text="Пороги качества соединения", padding=10)
+        thresholds_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=15, padx=0)
+        thresholds_frame.columnconfigure(1, weight=1)
+
+        # Скорость скачивания
+        ttk.Label(thresholds_frame, text="Скорость скачивания:", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=5)
+        download_spin = ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.download_threshold_var, width=6, font=self.scale_font('Arial', 10))
+        download_spin.grid(row=0, column=1, padx=5, sticky='w')
+        ttk.Label(thresholds_frame, text="% от средней (ниже = проблема)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=0, column=2, sticky='w')
+
+        # Пинг
+        ttk.Label(thresholds_frame, text="Пинг:", font=self.scale_font('Arial', 10)).grid(row=1, column=0, sticky='w', pady=5)
+        ping_spin = ttk.Spinbox(thresholds_frame, from_=0, to=500, textvariable=self.ping_threshold_var, width=6, font=self.scale_font('Arial', 10))
+        ping_spin.grid(row=1, column=1, padx=5, sticky='w')
+        ttk.Label(thresholds_frame, text="% от средней (выше = проблема)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=1, column=2, sticky='w')
+
+        # Джиттер (значение)
+        ttk.Label(thresholds_frame, text="Джиттер:", font=self.scale_font('Arial', 10)).grid(row=2, column=0, sticky='w', pady=5)
+        jitter_spin = ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_threshold_var, width=6, font=self.scale_font('Arial', 10))
+        jitter_spin.grid(row=2, column=1, padx=5, sticky='w')
+        ttk.Label(thresholds_frame, text="мс (превышение = проблема)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=2, column=2, sticky='w')
+
+        # Частота превышений джиттера
+        ttk.Label(thresholds_frame, text="Частота джиттера:", font=self.scale_font('Arial', 10)).grid(row=3, column=0, sticky='w', pady=5)
+        freq_spin = ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_frequency_var, width=6, font=self.scale_font('Arial', 10))
+        freq_spin.grid(row=3, column=1, padx=5, sticky='w')
+        ttk.Label(thresholds_frame, text="% измерений (если часто > порога)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=3, column=2, sticky='w')
+        # ===================================
+
         # Разделитель
-        ttk.Separator(settings_frame, orient='horizontal').grid(row=2, column=0, columnspan=3, sticky='ew', pady=15)
+        ttk.Separator(settings_frame, orient='horizontal').grid(row=3, column=0, columnspan=3, sticky='ew', pady=15)
         
-        # Автозапуск (без параметра font)
+        # Автозапуск
         self.auto_start_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Автозапуск при старте Windows", 
-                       variable=self.auto_start_var).grid(row=3, column=0, columnspan=3, sticky='w', pady=5)
+                       variable=self.auto_start_var).grid(row=4, column=0, columnspan=3, sticky='w', pady=5)
         
-        # Минимализация в трей (без параметра font)
+        # Минимализация в трей
         self.minimize_to_tray_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(settings_frame, text="Сворачивать в системный трей", 
-                       variable=self.minimize_to_tray_var).grid(row=4, column=0, columnspan=3, sticky='w', pady=5)
+                       variable=self.minimize_to_tray_var).grid(row=5, column=0, columnspan=3, sticky='w', pady=5)
         
         # Разделитель
-        ttk.Separator(settings_frame, orient='horizontal').grid(row=5, column=0, columnspan=3, sticky='ew', pady=15)
+        ttk.Separator(settings_frame, orient='horizontal').grid(row=6, column=0, columnspan=3, sticky='ew', pady=15)
         
         # Кнопка сохранения настроек
         save_button = ttk.Button(settings_frame, text="Сохранить настройки", command=self.save_settings)
-        save_button.grid(row=6, column=0, pady=10, sticky='w')
+        save_button.grid(row=7, column=0, pady=10, sticky='w')
         
         # Информация о программе
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
@@ -1798,13 +1845,34 @@ class InternetSpeedMonitor:
             if result:
                 self.interval_var.set(int(result[0]))
 
-            # Загружаем заявленную скорость
             cursor.execute("SELECT value FROM settings WHERE key='planned_speed'")
             result = cursor.fetchone()
             if result:
                 self.planned_speed_var.set(int(result[0]))
             else:
-                self.planned_speed_var.set(100)  # Значение по умолчанию
+                self.planned_speed_var.set(100)
+
+            # === НОВЫЕ ПОРОГИ ===
+            cursor.execute("SELECT value FROM settings WHERE key='download_threshold'")
+            result = cursor.fetchone()
+            if result:
+                self.download_threshold_var.set(int(result[0]))
+            
+            cursor.execute("SELECT value FROM settings WHERE key='ping_threshold'")
+            result = cursor.fetchone()
+            if result:
+                self.ping_threshold_var.set(int(result[0]))
+            
+            cursor.execute("SELECT value FROM settings WHERE key='jitter_threshold'")
+            result = cursor.fetchone()
+            if result:
+                self.jitter_threshold_var.set(int(result[0]))
+            
+            cursor.execute("SELECT value FROM settings WHERE key='jitter_frequency'")
+            result = cursor.fetchone()
+            if result:
+                self.jitter_frequency_var.set(int(result[0]))
+            # ===================
 
             cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
             result = cursor.fetchone()
@@ -1823,7 +1891,6 @@ class InternetSpeedMonitor:
 
     def save_settings(self, restart=True, show_message=True):
         """Сохранение настроек в БД"""
-        # Защита от повторного вызова
         if hasattr(self, '_saving_settings') and self._saving_settings:
             return
         self._saving_settings = True
@@ -1832,32 +1899,35 @@ class InternetSpeedMonitor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Сохраняем интервал
+            # Существующие настройки
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('interval', str(self.interval_var.get())))
-
-            # Сохраняем заявленную скорость
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('planned_speed', str(self.planned_speed_var.get())))
 
-            # Сохраняем автозапуск
+            # === НОВЫЕ ПОРОГИ ===
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('download_threshold', str(self.download_threshold_var.get())))
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('ping_threshold', str(self.ping_threshold_var.get())))
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('jitter_threshold', str(self.jitter_threshold_var.get())))
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('jitter_frequency', str(self.jitter_frequency_var.get())))
+            # ===================
+
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('auto_start', '1' if self.auto_start_var.get() else '0'))
-            
-            # Сохраняем настройку трея
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('minimize_to_tray', '1' if self.minimize_to_tray_var.get() else '0'))
             
             conn.commit()
             conn.close()
            
-            # Обновляем автозапуск в реестре
             self.update_autostart()
             
             if show_message:
-                # Применяем настройки без перезапуска
                 self.apply_settings()
-                
                 messagebox.showinfo(
                     "Настройки сохранены", 
                     "Настройки успешно сохранены и применены!"
@@ -2561,17 +2631,16 @@ class InternetSpeedMonitor:
                 pings = [row[4] for row in rows if row[4]]
                 jitters = [row[5] for row in rows if row[5]]
                 
-                # Рассчитываем средние и пороги
-                # Для скоростей: 75% от среднего = ниже на 25%
-                # Для пинга: 125% от среднего = выше на 25%
+                # Рассчитываем средние и пороги (ТОЛЬКО от средней, для журнала)
                 avg_download = sum(download_speeds) / len(download_speeds) if download_speeds else 0
                 avg_upload = sum(upload_speeds) / len(upload_speeds) if upload_speeds else 0
                 avg_ping = sum(pings) / len(pings) if pings else 0
                 avg_jitter = sum(jitters) / len(jitters) if jitters else 0
                 
-                threshold_download = avg_download * 0.75
-                threshold_upload = avg_upload * 0.75
-                threshold_ping = avg_ping * 1.25
+                # Пороги только от средней (25% правила)
+                threshold_download = avg_download * 0.75  # -25% от средней
+                threshold_upload = avg_upload * 0.75      # -25% от средней
+                threshold_ping = avg_ping * 1.25          # +25% от средней
                 
                 self.avg_download_var.set(f"{avg_download:.2f} Mbps")
                 self.avg_upload_var.set(f"{avg_upload:.2f} Mbps")
