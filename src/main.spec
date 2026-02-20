@@ -2,7 +2,6 @@
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files
 
 # Принудительно указываем путь к иконке
 icon_file = 'icon.ico'
@@ -16,7 +15,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        (icon_file, '.'),
+        ('icon.ico', '.'),
         ('openspeedtest-cli-fixed', '.'),
     ],
     hiddenimports=[
@@ -27,20 +26,16 @@ a = Analysis(
         'os', 'sys', 'tempfile', 'subprocess', 'winreg', 'ctypes', 'logging',
         'traceback', '_strptime', 'tzdata',
     ],
-    hookspath=['.'],
-    hooksconfig={},
+    hookspath=[],
     runtime_hooks=['runtime_hook.py'],
     excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=None,
     noarchive=False,
 )
 
-# Добавляем данные для matplotlib
-datas_matplotlib = collect_data_files('matplotlib')
-for data in datas_matplotlib:
-    if data not in a.datas:
-        a.datas.append(data)
-
-pyz = PYZ(a.pure, a.zipped_data)
+pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 
 exe = EXE(
     pyz,
