@@ -626,7 +626,9 @@ class InternetSpeedMonitor:
                     self.connection_type_var.set("—")
                     
                     self.update_monitor_tab_colors()
+                    self.update_planned_speed_indicator() 
                     self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
+
             else:
                 # Старая БД без новых колонок
                 cursor.execute('''
@@ -702,14 +704,22 @@ class InternetSpeedMonitor:
             avg_download = result[0] if result and result[0] else None
             avg_ping = result[1] if result and result[1] else None
             
+            # <<<--- НОВОЕ: Получаем заявленную скорость из настроек --->>>
+            planned_speed = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
+            
             # Сбрасываем цвета по умолчанию (черный)
             self.download_label.config(foreground='black')
             self.upload_label.config(foreground='black')
             self.ping_label.config(foreground='black')
             self.jitter_label.config(foreground='black')
             
-            # Проверяем скорость скачивания (ниже на 25% от средней)
-            if download is not None and avg_download is not None and download < avg_download * 0.75:
+            # Проверка 1: Скорость ниже заявленной (если задана)
+            if download is not None and planned_speed > 0 and download < planned_speed * 0.7:
+                self.download_label.config(foreground='red')
+                self.logger.info(f"Скорость ниже заявленной: {download:.2f} < {planned_speed} (на {((planned_speed-download)/planned_speed*100):.1f}%)")
+            
+            # Проверка 2: Скорость скачивания ниже на 25% от средней (как резерв)
+            elif download is not None and avg_download is not None and download < avg_download * 0.75:
                 self.download_label.config(foreground='red')
             
             # Проверяем пинг (выше на 25% от средней)
@@ -722,6 +732,29 @@ class InternetSpeedMonitor:
             
         except Exception as e:
             self.logger.error(f"Ошибка обновления цветов мониторинга: {e}")
+
+    def update_planned_speed_indicator(self):
+        """Обновить индикатор заявленной скорости"""
+        if hasattr(self, 'planned_speed_var') and hasattr(self, 'download_var'):
+            planned = self.planned_speed_var.get()
+            if planned > 0:
+                try:
+                    current = float(self.download_var.get().replace(' Mbps', ''))
+                    if current > 0:
+                        percent = (current / planned) * 100
+                        if percent < 70:
+                            status = "⚠️ Ниже тарифа"
+                        elif percent < 90:
+                            status = "⚡ Чуть ниже тарифа"
+                        else:
+                            status = "✅ Соответствует тарифу"
+                        self.planned_speed_indicator.config(text=f"Тариф: {planned} Mbps ({percent:.0f}%)")
+                    else:
+                        self.planned_speed_indicator.config(text=f"Тариф: {planned} Mbps")
+                except:
+                    self.planned_speed_indicator.config(text=f"Тариф: {planned} Mbps")
+            else:
+                self.planned_speed_indicator.config(text="")
 
     def analyze_connection_quality(self):
         """Анализ качества соединения за последнюю неделю"""
@@ -1337,7 +1370,11 @@ class InternetSpeedMonitor:
         self.jitter_var = tk.StringVar(value="0 ms")
         self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.jitter_label.grid(row=3, column=1, padx=10, sticky='w')
-        
+
+        # Метка с заявленной скоростью (таким же шрифтом как скорость загрузки)
+        self.planned_speed_indicator = ttk.Label(current_frame, text="", font=self.scale_font('Arial', 12))
+        self.planned_speed_indicator.grid(row=0, column=2, padx=(20, 0), sticky='w')
+
         # Время последнего измерения
         ttk.Label(current_frame, text="Последнее измерение:", font=self.scale_font('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
         self.last_check_var = tk.StringVar(value="Никогда")
@@ -1577,27 +1614,41 @@ class InternetSpeedMonitor:
 
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
+        # Основной фрейм с настройками
         settings_frame = ttk.LabelFrame(self.settings_frame, text="Настройки мониторинга", padding=20)
         settings_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
         # Интервал проверки
-        ttk.Label(settings_frame, text="Интервал проверки (минут):").grid(row=0, column=0, sticky='w', pady=10)
+        ttk.Label(settings_frame, text="Интервал проверки (минут):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=10)
         self.interval_var = tk.IntVar(value=60)
-        ttk.Spinbox(settings_frame, from_=1, to=1440, textvariable=self.interval_var, width=10).grid(row=0, column=1, padx=10)
+        ttk.Spinbox(settings_frame, from_=1, to=1440, textvariable=self.interval_var, width=10, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=10, sticky='w')
         
-        # Автозапуск
+        # Заявленная скорость по тарифу
+        ttk.Label(settings_frame, text="Заявленная скорость (Mbps):", font=self.scale_font('Arial', 10)).grid(row=1, column=0, sticky='w', pady=10)
+        self.planned_speed_var = tk.IntVar(value=100)
+        speed_spinbox = ttk.Spinbox(settings_frame, from_=0, to=10000, textvariable=self.planned_speed_var, width=10, font=self.scale_font('Arial', 10))
+        speed_spinbox.grid(row=1, column=1, padx=10, sticky='w')
+        ttk.Label(settings_frame, text="(0 = не учитывать)", font=self.scale_font('Arial', 8), foreground='gray').grid(row=1, column=2, sticky='w', padx=5)
+        
+        # Разделитель
+        ttk.Separator(settings_frame, orient='horizontal').grid(row=2, column=0, columnspan=3, sticky='ew', pady=15)
+        
+        # Автозапуск (без параметра font)
         self.auto_start_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Автозапуск при старте Windows", 
-                       variable=self.auto_start_var).grid(row=1, column=0, columnspan=2, sticky='w', pady=10)
+                       variable=self.auto_start_var).grid(row=3, column=0, columnspan=3, sticky='w', pady=5)
         
-        # Минимализация в трей
+        # Минимализация в трей (без параметра font)
         self.minimize_to_tray_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(settings_frame, text="Сворачивать в системный трей", 
-                       variable=self.minimize_to_tray_var).grid(row=2, column=0, columnspan=2, sticky='w', pady=10)
+                       variable=self.minimize_to_tray_var).grid(row=4, column=0, columnspan=3, sticky='w', pady=5)
         
-        # Кнопки сохранения настроек
-        ttk.Button(settings_frame, text="Сохранить настройки", 
-                  command=self.save_settings).grid(row=3, column=0, pady=20)
+        # Разделитель
+        ttk.Separator(settings_frame, orient='horizontal').grid(row=5, column=0, columnspan=3, sticky='ew', pady=15)
+        
+        # Кнопка сохранения настроек
+        save_button = ttk.Button(settings_frame, text="Сохранить настройки", command=self.save_settings)
+        save_button.grid(row=6, column=0, pady=10, sticky='w')
         
         # Информация о программе
         info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
@@ -1738,7 +1789,15 @@ class InternetSpeedMonitor:
             result = cursor.fetchone()
             if result:
                 self.interval_var.set(int(result[0]))
-            
+
+            # Загружаем заявленную скорость
+            cursor.execute("SELECT value FROM settings WHERE key='planned_speed'")
+            result = cursor.fetchone()
+            if result:
+                self.planned_speed_var.set(int(result[0]))
+            else:
+                self.planned_speed_var.set(100)  # Значение по умолчанию
+
             cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
             result = cursor.fetchone()
             if result:
@@ -1768,7 +1827,11 @@ class InternetSpeedMonitor:
             # Сохраняем интервал
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('interval', str(self.interval_var.get())))
-            
+
+            # Сохраняем заявленную скорость
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('planned_speed', str(self.planned_speed_var.get())))
+
             # Сохраняем автозапуск
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('auto_start', '1' if self.auto_start_var.get() else '0'))
@@ -2276,6 +2339,7 @@ class InternetSpeedMonitor:
         self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
         self.status_var.set(status_message)
         self.test_button.config(state='normal')
+        self.update_planned_speed_indicator()
 
 
     def _update_ui_with_error(self, error_msg):
