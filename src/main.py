@@ -2822,17 +2822,21 @@ class InternetSpeedMonitor:
             
             # График пинга и джиттера
             if ping_vals:
-                ax2.plot(ping_ts, ping_vals, 'g-', label='Пинг', linewidth=2)
+                ax2.plot(ping_ts, ping_vals, color='purple', linestyle='-', label='Пинг', linewidth=2)
             if jitter_vals:
                 ax2.plot(jitter_ts, jitter_vals, color='orange', label='Джиттер', linewidth=2)
             
             # Добавляем средние значения как пунктирные линии (без текста в легенде)
             if ping_valid or jitter_valid:
                 if avg_ping > 0:
-                    ax2.axhline(y=avg_ping, color='g', linestyle='--', linewidth=1, alpha=0.6)
+                    ax2.axhline(y=avg_ping, color='purple', linestyle='--', linewidth=1, alpha=0.6)
                 if avg_jitter >= 0:
                     ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6)
-            
+
+            # Добавляем пороговые линии (60 мс для ping, 15 мс для jitter)
+            ax2.axhline(y=60, color='red', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог пинга (60 мс)')
+            ax2.axhline(y=15, color='orange', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог джиттера (15 мс)')
+
             ax2.set_title('Пинг и Джиттер', fontsize=title_fontsize)
             ax2.set_xlabel('', fontsize=label_fontsize)
             ax2.set_ylabel('Значение (ms)', fontsize=label_fontsize)
