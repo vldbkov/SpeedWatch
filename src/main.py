@@ -239,7 +239,23 @@ class InternetSpeedMonitor:
         # Управление консолью
         self.console_visible = False  # Начинаем со скрытой консоли
         self.setup_console()
-        ###
+        
+        # === ВСЕ ПЕРЕМЕННЫЕ ИНТЕРФЕЙСА ДОЛЖНЫ БЫТЬ ЗДЕСЬ ===
+        self.download_var = tk.StringVar(value="0 Mbps")
+        self.upload_var = tk.StringVar(value="0 Mbps")
+        self.ping_var = tk.StringVar(value="0 ms")
+        self.jitter_var = tk.StringVar(value="0 ms")
+        self.last_check_var = tk.StringVar(value="Никогда")
+        self.next_test_var = tk.StringVar(value="--:--:--")
+        self.status_var = tk.StringVar(value="Готов к работе")
+        
+        # Переменные для информации о подключении
+        self.provider_var = tk.StringVar(value="—")
+        self.connection_type_var = tk.StringVar(value="—")
+        self.server_info_var = tk.StringVar(value="—")
+        self.ip_address_var = tk.StringVar(value="—")
+        # ===================================================
+        
         # Создание интерфейса
         self.create_widgets()
         
@@ -617,10 +633,13 @@ class InternetSpeedMonitor:
                     self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
                     self.jitter_var.set(f"{jitter:.2f} ms" if jitter else "0 ms")
                     
-                    # Обновляем новую информацию
-                    self.provider_var.set(server_provider if server_provider else "—")
+                    # Обновляем информацию о сервере (только если есть данные)
                     self.server_info_var.set(server if server else "—")
-                    self.ip_address_var.set(client_ip if client_ip else "—")
+                    
+                    # Все поля подключения оставляем пустыми - они будут получены при новом тесте
+                    self.provider_var.set("—")
+                    self.ip_address_var.set("—")
+                    self.connection_type_var.set("—")
                     
                     # Определяем тип подключения (временно, пока нет данных)
                     self.connection_type_var.set("—")
@@ -1349,60 +1368,51 @@ class InternetSpeedMonitor:
         
         # Скорость загрузки
         ttk.Label(current_frame, text="Скорость загрузки:", font=self.scale_font('Arial', 12)).grid(row=0, column=0, sticky='w', pady=5)
-        self.download_var = tk.StringVar(value="0 Mbps")
         self.download_label = ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.download_label.grid(row=0, column=1, padx=10, sticky='w')
         
+        # Метка с заявленной скоростью (таким же шрифтом как скорость загрузки)
+        self.planned_speed_indicator = ttk.Label(current_frame, text="", font=self.scale_font('Arial', 12))
+        self.planned_speed_indicator.grid(row=0, column=2, padx=(20, 0), sticky='w')
+        
         # Скорость отдачи
         ttk.Label(current_frame, text="Скорость отдачи:", font=self.scale_font('Arial', 12)).grid(row=1, column=0, sticky='w', pady=5)
-        self.upload_var = tk.StringVar(value="0 Mbps")
         self.upload_label = ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.upload_label.grid(row=1, column=1, padx=10, sticky='w')
         
         # Пинг
         ttk.Label(current_frame, text="Пинг:", font=self.scale_font('Arial', 12)).grid(row=2, column=0, sticky='w', pady=5)
-        self.ping_var = tk.StringVar(value="0 ms")
         self.ping_label = ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.ping_label.grid(row=2, column=1, padx=10, sticky='w')
         
         # Jitter
         ttk.Label(current_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
-        self.jitter_var = tk.StringVar(value="0 ms")
         self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.jitter_label.grid(row=3, column=1, padx=10, sticky='w')
-
-        # Метка с заявленной скоростью (таким же шрифтом как скорость загрузки)
-        self.planned_speed_indicator = ttk.Label(current_frame, text="", font=self.scale_font('Arial', 12))
-        self.planned_speed_indicator.grid(row=0, column=2, padx=(20, 0), sticky='w')
-
+        
         # Время последнего измерения
         ttk.Label(current_frame, text="Последнее измерение:", font=self.scale_font('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
-        self.last_check_var = tk.StringVar(value="Никогда")
         self.last_check_label = ttk.Label(current_frame, textvariable=self.last_check_var, font=self.scale_font('Arial', 11), width=16, anchor='w')
         self.last_check_label.grid(row=4, column=1, padx=10, sticky='w')
 
-        # === НОВЫЙ ФРЕЙМ: Информация о подключении ===
+        # === ФРЕЙМ: Информация о подключении ===
         info_frame = ttk.LabelFrame(self.monitor_frame, text="Информация о подключении", padding=self.scale_value(15))
         info_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
 
         # Провайдер
         ttk.Label(info_frame, text="Провайдер:", font=self.scale_font('Arial', 11)).grid(row=0, column=0, sticky='w', pady=3)
-        self.provider_var = tk.StringVar(value="—")
         ttk.Label(info_frame, textvariable=self.provider_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=0, column=1, sticky='w', padx=10)
 
         # Тип подключения
         ttk.Label(info_frame, text="Подключение:", font=self.scale_font('Arial', 11)).grid(row=1, column=0, sticky='w', pady=3)
-        self.connection_type_var = tk.StringVar(value="—")
         ttk.Label(info_frame, textvariable=self.connection_type_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=1, column=1, sticky='w', padx=10)
 
         # Сервер
         ttk.Label(info_frame, text="Сервер:", font=self.scale_font('Arial', 11)).grid(row=2, column=0, sticky='w', pady=3)
-        self.server_info_var = tk.StringVar(value="—")
         ttk.Label(info_frame, textvariable=self.server_info_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=2, column=1, sticky='w', padx=10)
 
         # IP адрес
         ttk.Label(info_frame, text="IP адрес:", font=self.scale_font('Arial', 11)).grid(row=3, column=0, sticky='w', pady=3)
-        self.ip_address_var = tk.StringVar(value="—")
         ttk.Label(info_frame, textvariable=self.ip_address_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=3, column=1, sticky='w', padx=10)
 
         # Фрейм с управлением
@@ -1421,12 +1431,9 @@ class InternetSpeedMonitor:
         
         # Информация о следующем тесте
         ttk.Label(control_frame, text="Следующий тест через:", font=self.scale_font('Arial', 10)).pack(side='left', padx=self.scale_value(20))
-        self.next_test_var = tk.StringVar(value="--:--:--")
         ttk.Label(control_frame, textvariable=self.next_test_var, font=self.scale_font('Arial', 11) + ('bold',)).pack(side='left')
         
         # Статус бар ПОД кнопками управления
-        self.status_var = tk.StringVar()
-        self.status_var.set("Готов к работе")
         status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=5)
         status_bar.pack(fill='x', padx=self.scale_value(15), pady=(0, self.scale_value(15)))
 
@@ -2245,27 +2252,16 @@ class InternetSpeedMonitor:
             if console_animation_thread and console_animation_thread.is_alive():
                 console_animation_thread.join(timeout=1)
 
-            # Сохраняем результаты (даже частичные)
-            self.save_test_results(
-                download_speed, 
-                upload_speed, 
-                ping, 
-                jitter, 
-                server_name,
-                server_city,
-                server_provider,
-                client_ip
-            )
-
             # Получаем информацию об IP и провайдере
             ip_info = self.get_external_ip_info()
             client_ip = ip_info.get('ip', 'Неизвестно')
             provider_name = ip_info.get('provider', 'Неизвестно')
             connection_type = ip_info.get('connection_type', 'Неизвестно')
             
+            self.logger.info(f"IP Info: {ip_info}")
             self.logger.info(f"Client IP: {client_ip}, Provider: {provider_name}, Type: {connection_type}")
             
-            # Сохраняем результаты с полной информацией
+            # Сохраняем результаты с полной информацией  <<<--- ТОЛЬКО ЭТОТ
             self.save_test_results(
                 download_speed, 
                 upload_speed, 
@@ -2404,13 +2400,13 @@ class InternetSpeedMonitor:
             conn.commit()
             conn.close()
             
-            # Обновляем интерфейс
+            # ЯВНОЕ ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
             self.download_var.set(f"{download:.2f} Mbps" if download else "0 Mbps")
             self.upload_var.set(f"{upload:.2f} Mbps" if upload else "0 Mbps")
             self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
             self.jitter_var.set(f"{jitter:.2f} ms" if jitter else "0 ms")
             
-            # Обновляем новую информацию
+            # ЯВНОЕ ОБНОВЛЕНИЕ ИНФОРМАЦИИ О ПОДКЛЮЧЕНИИ
             self.provider_var.set(client_provider if client_provider else "—")
             self.connection_type_var.set(connection_type if connection_type else "—")
             self.server_info_var.set(server if server else "—")
@@ -2418,11 +2414,16 @@ class InternetSpeedMonitor:
             
             self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
             self.update_monitor_tab_colors()
+            self.update_planned_speed_indicator()
+            
+            # Принудительное обновление окна
+            self.root.update_idletasks()
             
             self.root.after(0, self.update_log)
             self.root.after(0, self.update_graph)
             
             self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
+            self.logger.info(f"UI обновлен: провайдер={client_provider}, тип={connection_type}")
             
         except Exception as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
