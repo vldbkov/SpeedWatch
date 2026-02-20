@@ -2832,13 +2832,13 @@ class InternetSpeedMonitor:
                     ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6)
 
             # Добавляем пороговые линии (60 мс для ping, 15 мс для jitter)
-            ax2.axhline(y=60, color='red', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог пинга (60 мс)')
+            ax2.axhline(y=60, color='purple', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог пинга (60 мс)')
             ax2.axhline(y=15, color='orange', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог джиттера (15 мс)')
 
             ax2.set_title('Пинг и Джиттер', fontsize=title_fontsize)
             ax2.set_xlabel('', fontsize=label_fontsize)
             ax2.set_ylabel('Значение (ms)', fontsize=label_fontsize)
-            ax2.legend(fontsize=label_fontsize, loc='best')
+            ax2.legend(fontsize=label_fontsize, loc='upper right')
             ax2.grid(True, alpha=0.3)
             ax2.tick_params(axis='both', labelsize=label_fontsize)
             
