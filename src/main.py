@@ -2785,7 +2785,7 @@ class InternetSpeedMonitor:
                 ax1.plot(download_ts, download_vals, 'b-', label='Загрузка', linewidth=2)
             if upload_vals:
                 ax1.plot(upload_ts, upload_vals, 'r-', label='Отдача', linewidth=2)
-            
+
             # Добавляем средние значения как пунктирные линии (без текста в легенде)
             if download_valid or upload_valid:
                 time_range = [min(list(download_ts) + list(upload_ts)), 
@@ -2794,7 +2794,14 @@ class InternetSpeedMonitor:
                     ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6)
                 if avg_upload > 0:
                     ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6)
-            
+
+            # Добавляем линию заявленной скорости (зеленая штрих-пунктирная)
+            planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
+            if planned > 0:
+                ax1.axhline(y=planned, color='green', linestyle='-.', linewidth=2, alpha=0.8, label=f'Тариф ({planned} Mbps)')
+                # Обновляем легенду, чтобы добавить новую линию
+                ax1.legend(fontsize=label_fontsize, loc='best')
+
             ax1.set_title('Скорость интернета', fontsize=title_fontsize)
             ax1.set_ylabel('Скорость (Mbps)', fontsize=label_fontsize)
             ax1.legend(fontsize=label_fontsize, loc='best')
