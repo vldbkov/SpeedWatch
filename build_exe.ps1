@@ -47,18 +47,36 @@ Test-ExitCode
 Test-ExitCode
 Write-Host "  + All dependencies installed" -ForegroundColor Green
 
+# Step 3.5: Kill any running speedwatch processes
+Write-Host "[3.5/8] Killing any running speedwatch processes..." -ForegroundColor Yellow
+Get-Process | Where-Object { $_.ProcessName -like "*speedwatch*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
+Write-Host "  + Old processes terminated" -ForegroundColor Green
+
 # Step 4: Clean previous builds
 Write-Host "[4/8] Cleaning previous builds..." -ForegroundColor Yellow
+
+# Пытаемся удалить папки
 if (Test-Path "src\dist") {
-    Remove-Item -Recurse -Force "src\dist"
-    Write-Host "  + src\dist folder removed" -ForegroundColor Green
+    try {
+        Remove-Item -Recurse -Force "src\dist" -ErrorAction Stop
+        Write-Host "  + src\dist folder removed" -ForegroundColor Green
+    } catch {
+        Write-Host "  - Could not remove src\dist (might be in use)" -ForegroundColor Yellow
+        # Пробуем переименовать и удалить позже
+        Rename-Item "src\dist" "src\dist_old" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+        Remove-Item -Recurse -Force "src\dist_old" -ErrorAction SilentlyContinue
+    }
 }
+
 if (Test-Path "src\build") {
-    Remove-Item -Recurse -Force "src\build"
+    Remove-Item -Recurse -Force "src\build" -ErrorAction SilentlyContinue
     Write-Host "  + src\build folder removed" -ForegroundColor Green
 }
+
 if (Test-Path "*.spec") {
-    Remove-Item -Force "*.spec"
+    Remove-Item -Force "*.spec" -ErrorAction SilentlyContinue
     Write-Host "  + .spec files removed" -ForegroundColor Green
 }
 
@@ -77,6 +95,37 @@ if ($buildResult -ne 0) {
     exit $buildResult
 }
 Write-Host "  + PyInstaller finished" -ForegroundColor Green
+
+# Step 5.5: Force copy required files to dist (ПОСЛЕ того как dist создан)
+Write-Host "[5.5/8] Force copying required files to dist..." -ForegroundColor Yellow
+
+# Создаем папку dist если её вдруг нет
+if (-not (Test-Path "src\dist")) {
+    New-Item -ItemType Directory -Path "src\dist" -Force | Out-Null
+    Write-Host "  + Created src\dist directory" -ForegroundColor Yellow
+}
+
+$requiredFiles = @(
+    @{Source="src\icon.ico"; Destination="src\dist\icon.ico"},
+    @{Source="src\openspeedtest-cli-fixed"; Destination="src\dist\openspeedtest-cli-fixed"}
+)
+
+foreach ($file in $requiredFiles) {
+    if (Test-Path $file.Source) {
+        Copy-Item $file.Source $file.Destination -Force
+        Write-Host "  + Copied $($file.Source) to dist" -ForegroundColor Green
+    } else {
+        Write-Host "  - Source file $($file.Source) not found!" -ForegroundColor Red
+    }
+}
+
+# Проверяем результат
+Write-Host "  Final dist contents:" -ForegroundColor Yellow
+if (Test-Path "src\dist") {
+    Get-ChildItem src\dist | ForEach-Object { Write-Host "    - $($_.Name)" }
+} else {
+    Write-Host "    - dist folder still not found!" -ForegroundColor Red
+}
 
 # Step 6: Check created files
 Write-Host "[6/8] Checking created files..." -ForegroundColor Yellow
