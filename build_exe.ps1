@@ -80,6 +80,16 @@ if (Test-Path "*.spec") {
     Write-Host "  + .spec files removed" -ForegroundColor Green
 }
 
+# Step 4.5: Create .env file if it doesn't exist
+Write-Host "[4.5/8] Checking .env file..." -ForegroundColor Yellow
+$envFile = "src\.env"
+if (-not (Test-Path $envFile)) {
+    Set-Content -Path $envFile -Value "OPENSPEEDTEST_API_KEY="
+    Write-Host "  + Created empty .env file in src" -ForegroundColor Green
+} else {
+    Write-Host "  + .env file already exists in src" -ForegroundColor Green
+}
+
 # Step 5: Run PyInstaller
 Write-Host "[5/8] Running PyInstaller..." -ForegroundColor Yellow
 Write-Host "  This may take several minutes..." -ForegroundColor Gray
@@ -107,7 +117,8 @@ if (-not (Test-Path "src\dist")) {
 
 $requiredFiles = @(
     @{Source="src\icon.ico"; Destination="src\dist\icon.ico"},
-    @{Source="src\openspeedtest-cli-fixed"; Destination="src\dist\openspeedtest-cli-fixed"}
+    @{Source="src\openspeedtest-cli-fixed"; Destination="src\dist\openspeedtest-cli-fixed"},
+    @{Source="src\.env"; Destination="src\dist\.env"}
 )
 
 foreach ($file in $requiredFiles) {
@@ -131,8 +142,7 @@ if (Test-Path "src\dist") {
 Write-Host "[6/8] Checking created files..." -ForegroundColor Yellow
 
 $exeFiles = @(
-    "src\dist\speedwatch.exe",
-    "src\dist\speedwatch_w.exe"
+    "src\dist\speedwatch.exe"
 )
 
 $allFound = $true
@@ -187,10 +197,9 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Files created in: src\dist\" -ForegroundColor White
 Write-Host "  + speedwatch.exe     - with console (debug)" -ForegroundColor Cyan
-Write-Host "  + speedwatch_w.exe   - without console (production)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Run program:" -ForegroundColor White
-Write-Host "  src\dist\speedwatch_w.exe" -ForegroundColor Yellow
+Write-Host "  src\dist\speedwatch.exe" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Test mode:" -ForegroundColor White
 Write-Host "  src\dist\speedwatch.exe --test-mode" -ForegroundColor Yellow

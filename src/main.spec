@@ -17,6 +17,7 @@ a = Analysis(
     datas=[
         ('icon.ico', '.'),
         ('openspeedtest-cli-fixed', '.'),
+        ('.env', '.'),
     ],
     hiddenimports=[
         'tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog',
@@ -51,22 +52,5 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
-    icon=icon_file
-)
-
-exe_windowed = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    name='speedwatch_w',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
     icon=icon_file
 )
