@@ -2799,12 +2799,10 @@ class InternetSpeedMonitor:
             planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
             if planned > 0:
                 ax1.axhline(y=planned, color='green', linestyle='-.', linewidth=2, alpha=0.8, label=f'Тариф ({planned} Mbps)')
-                # Обновляем легенду, чтобы добавить новую линию
-                ax1.legend(fontsize=label_fontsize, loc='best')
 
             ax1.set_title('Скорость интернета', fontsize=title_fontsize)
             ax1.set_ylabel('Скорость (Mbps)', fontsize=label_fontsize)
-            ax1.legend(fontsize=label_fontsize, loc='best')
+            ax1.legend(fontsize=label_fontsize, loc='lower right')
             ax1.grid(True, alpha=0.3)
             ax1.tick_params(axis='both', labelsize=label_fontsize)
             
