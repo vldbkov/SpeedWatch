@@ -1902,9 +1902,6 @@ class InternetSpeedMonitor:
                 # В режиме разработки файл в папке src
                 cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
 
-            self.logger.info(f"CLI path: {cli_path}")
-            self.logger.info(f"CLI exists: {os.path.exists(cli_path)}")
-
             if not os.path.exists(cli_path):
                 error_msg = f"Файл openspeedtest-cli не найден по пути: {cli_path}"
                 self.logger.error(error_msg)
@@ -1938,8 +1935,6 @@ class InternetSpeedMonitor:
             else:
                 python_exe = sys.executable
 
-            self.logger.info(f"Using Python: {python_exe}")
-
             with open(stdout_temp.name, 'w', encoding='utf-8') as out_f, \
                  open(stderr_temp.name, 'w', encoding='utf-8') as err_f:
 
@@ -1955,11 +1950,8 @@ class InternetSpeedMonitor:
 
             # Читаем результаты
             with open(stdout_temp.name, 'rb') as f:
-                stdout_bytes = f.read()
-            
-            # Логируем первые 500 символов вывода для диагностики
-            self.logger.info(f"CLI output (first 500 chars): {stdout_bytes[:500]}")
-            
+                stdout_bytes = f.read()            
+           
             stdout = None
             for encoding in ['utf-8', 'cp1251', 'cp866']:
                 try:
