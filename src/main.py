@@ -1868,6 +1868,7 @@ class InternetSpeedMonitor:
             import os
             import tempfile
             import re
+            import subprocess
             
             # Запускаем анимацию в консоли, если она доступна
             if sys.stdout.isatty():  # Проверяем, что вывод идет в консоль
@@ -1901,12 +1902,13 @@ class InternetSpeedMonitor:
                 # В режиме разработки файл в папке src
                 cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
 
+            self.logger.info(f"CLI path: {cli_path}")
+            self.logger.info(f"CLI exists: {os.path.exists(cli_path)}")
+
             if not os.path.exists(cli_path):
                 error_msg = f"Файл openspeedtest-cli не найден по пути: {cli_path}"
-
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
-
                 # Останавливаем анимацию
                 stop_animation.set()
                 if console_animation_thread and console_animation_thread.is_alive():
@@ -1920,14 +1922,33 @@ class InternetSpeedMonitor:
             stdout_temp.close()
             stderr_temp.close()
 
+            # Определяем какой python использовать
+            if getattr(sys, 'frozen', False):
+                # В EXE режиме используем python из системы
+                python_exe = "C:\\Python312\\python.exe"
+                if not os.path.exists(python_exe):
+                    # Пробуем найти python через where
+                    try:
+                        result = subprocess.run(["where", "python"], capture_output=True, text=True, shell=True)
+                        if result.returncode == 0 and result.stdout.strip():
+                            python_exe = result.stdout.strip().split('\n')[0]
+                            self.logger.info(f"Python found via where: {python_exe}")
+                    except Exception as e:
+                        self.logger.warning(f"Error finding python: {e}")
+            else:
+                python_exe = sys.executable
+
+            self.logger.info(f"Using Python: {python_exe}")
+
             with open(stdout_temp.name, 'w', encoding='utf-8') as out_f, \
                  open(stderr_temp.name, 'w', encoding='utf-8') as err_f:
 
                 process = subprocess.Popen(
-                    [sys.executable, cli_path],
+                    [python_exe, cli_path],
                     stdout=out_f,
                     stderr=err_f,
-                    text=True
+                    text=True,
+                    shell=True
                 )
 
                 process.wait(timeout=120)
@@ -1935,6 +1956,9 @@ class InternetSpeedMonitor:
             # Читаем результаты
             with open(stdout_temp.name, 'rb') as f:
                 stdout_bytes = f.read()
+            
+            # Логируем первые 500 символов вывода для диагностики
+            self.logger.info(f"CLI output (first 500 chars): {stdout_bytes[:500]}")
             
             stdout = None
             for encoding in ['utf-8', 'cp1251', 'cp866']:
@@ -1948,6 +1972,9 @@ class InternetSpeedMonitor:
             with open(stderr_temp.name, 'rb') as f:
                 stderr_bytes = f.read()
             stderr = stderr_bytes.decode('utf-8', errors='ignore')
+            
+            if stderr:
+                self.logger.warning(f"CLI stderr: {stderr}")
 
             os.unlink(stdout_temp.name)
             os.unlink(stderr_temp.name)
@@ -2005,7 +2032,15 @@ class InternetSpeedMonitor:
 
             # Проверяем, что получили хотя бы что-то
             if download_speed is None and upload_speed is None and ping is None and jitter is None:
-                raise Exception("Не удалось получить данные о скорости из вывода CLI")
+                error_msg = "Не удалось получить данные о скорости из вывода CLI"
+                self.logger.error(error_msg)
+                self.logger.error(f"Full stdout: {stdout}")
+                self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                stop_animation.set()
+                if console_animation_thread and console_animation_thread.is_alive():
+                    console_animation_thread.join(timeout=1)
+                self.test_in_progress = False
+                return
 
             # Останавливаем консольную анимацию
             stop_animation.set()
@@ -2039,6 +2074,7 @@ class InternetSpeedMonitor:
             stop_animation.set()
             if console_animation_thread and console_animation_thread.is_alive():
                 console_animation_thread.join(timeout=1)
+            self.test_in_progress = False
         except Exception as e:
             error_msg = str(e)
             self.logger.error(f"Ошибка теста скорости: {error_msg}")
@@ -2047,12 +2083,12 @@ class InternetSpeedMonitor:
             stop_animation.set()
             if console_animation_thread and console_animation_thread.is_alive():
                 console_animation_thread.join(timeout=1)
+            self.test_in_progress = False
         finally:
             # Останавливаем анимацию в статус-баре
             self.root.after(0, self.stop_test_animation)
             self.test_in_progress = False
             self.root.after(0, lambda: self.test_button.config(state='normal'))
-
 
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
