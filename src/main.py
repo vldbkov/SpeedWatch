@@ -513,7 +513,54 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка получения времени последнего измерения: {e}")
             return "Нет данных"        
-    ##
+
+    def get_external_ip_info(self):
+        """Получить внешний IP и информацию о провайдере"""
+        try:
+            import requests
+            
+            # Получаем внешний IP
+            ip_response = requests.get('https://api.ipify.org?format=json', timeout=5)
+            ip_data = ip_response.json()
+            my_ip = ip_data['ip']
+            
+            # Получаем информацию о провайдере по IP
+            provider_response = requests.get(f'http://ip-api.com/json/{my_ip}?fields=status,isp,org,as,mobile,proxy,hosting', timeout=5)
+            provider_data = provider_response.json()
+            
+            if provider_data.get('status') == 'success':
+                isp = provider_data.get('isp', 'Неизвестно')
+                org = provider_data.get('org', '')
+                as_info = provider_data.get('as', '')
+                
+                # Очищаем название провайдера
+                provider = isp
+                if org and org != isp:
+                    provider = f"{isp} ({org})"
+                
+                # Определяем тип подключения
+                if provider_data.get('mobile'):
+                    conn_type = "Мобильный"
+                elif provider_data.get('proxy'):
+                    conn_type = "Прокси/VPN"
+                elif provider_data.get('hosting'):
+                    conn_type = "Хостинг/Дата-центр"
+                else:
+                    conn_type = "Проводной"
+                
+                return {
+                    'ip': my_ip,
+                    'provider': provider,
+                    'as': as_info,
+                    'connection_type': conn_type
+                }
+            else:
+                return {'ip': my_ip, 'provider': 'Неизвестно', 'connection_type': 'Неизвестно'}
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка получения IP информации: {e}")
+            return {'ip': 'Неизвестно', 'provider': 'Неизвестно', 'connection_type': 'Неизвестно'}
+
     def get_first_measurement_date(self):
         """Получение даты первого измерения из БД"""
         try:
@@ -549,25 +596,59 @@ class InternetSpeedMonitor:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT download_speed, upload_speed, ping, jitter 
-                FROM speed_measurements 
-                ORDER BY timestamp DESC LIMIT 1
-            ''')
-            result = cursor.fetchone()
+            
+            # Проверяем наличие новых колонок
+            cursor.execute("PRAGMA table_info(speed_measurements)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # Формируем запрос в зависимости от наличия колонок
+            if all(col in columns for col in ['server_city', 'server_provider', 'client_ip']):
+                cursor.execute('''
+                    SELECT download_speed, upload_speed, ping, jitter, 
+                           server, server_city, server_provider, client_ip 
+                    FROM speed_measurements 
+                    ORDER BY timestamp DESC LIMIT 1
+                ''')
+                result = cursor.fetchone()
+                if result:
+                    download, upload, ping, jitter, server, server_city, server_provider, client_ip = result
+                    self.download_var.set(f"{download:.2f} Mbps" if download else "0 Mbps")
+                    self.upload_var.set(f"{upload:.2f} Mbps" if upload else "0 Mbps")
+                    self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
+                    self.jitter_var.set(f"{jitter:.2f} ms" if jitter else "0 ms")
+                    
+                    # Обновляем новую информацию
+                    self.provider_var.set(server_provider if server_provider else "—")
+                    self.server_info_var.set(server if server else "—")
+                    self.ip_address_var.set(client_ip if client_ip else "—")
+                    
+                    # Определяем тип подключения (временно, пока нет данных)
+                    self.connection_type_var.set("—")
+                    
+                    self.update_monitor_tab_colors()
+                    self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
+            else:
+                # Старая БД без новых колонок
+                cursor.execute('''
+                    SELECT download_speed, upload_speed, ping, jitter, server 
+                    FROM speed_measurements 
+                    ORDER BY timestamp DESC LIMIT 1
+                ''')
+                result = cursor.fetchone()
+                if result:
+                    download, upload, ping, jitter, server = result
+                    self.download_var.set(f"{download:.2f} Mbps")
+                    self.upload_var.set(f"{upload:.2f} Mbps")
+                    self.ping_var.set(f"{ping:.2f} ms")
+                    self.jitter_var.set(f"{jitter:.2f} ms")
+                    self.server_info_var.set(server if server else "—")
+                    self.update_monitor_tab_colors()
+                    self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
+                else:
+                    self.logger.info("Нет сохраненных измерений")
+            
             conn.close()
             
-            if result:
-                download, upload, ping, jitter = result
-                self.download_var.set(f"{download:.2f} Mbps")
-                self.upload_var.set(f"{upload:.2f} Mbps")
-                self.ping_var.set(f"{ping:.2f} ms")
-                self.jitter_var.set(f"{jitter:.2f} ms")                
-                self.update_monitor_tab_colors()   # Обновляем цвета согласно нормам
-                self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
-            else:
-                self.logger.info("Нет сохраненных измерений")
-                
         except Exception as e:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
 
@@ -1262,7 +1343,31 @@ class InternetSpeedMonitor:
         self.last_check_var = tk.StringVar(value="Никогда")
         self.last_check_label = ttk.Label(current_frame, textvariable=self.last_check_var, font=self.scale_font('Arial', 11), width=16, anchor='w')
         self.last_check_label.grid(row=4, column=1, padx=10, sticky='w')
-        
+
+        # === НОВЫЙ ФРЕЙМ: Информация о подключении ===
+        info_frame = ttk.LabelFrame(self.monitor_frame, text="Информация о подключении", padding=self.scale_value(15))
+        info_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
+
+        # Провайдер
+        ttk.Label(info_frame, text="Провайдер:", font=self.scale_font('Arial', 11)).grid(row=0, column=0, sticky='w', pady=3)
+        self.provider_var = tk.StringVar(value="—")
+        ttk.Label(info_frame, textvariable=self.provider_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=0, column=1, sticky='w', padx=10)
+
+        # Тип подключения
+        ttk.Label(info_frame, text="Подключение:", font=self.scale_font('Arial', 11)).grid(row=1, column=0, sticky='w', pady=3)
+        self.connection_type_var = tk.StringVar(value="—")
+        ttk.Label(info_frame, textvariable=self.connection_type_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=1, column=1, sticky='w', padx=10)
+
+        # Сервер
+        ttk.Label(info_frame, text="Сервер:", font=self.scale_font('Arial', 11)).grid(row=2, column=0, sticky='w', pady=3)
+        self.server_info_var = tk.StringVar(value="—")
+        ttk.Label(info_frame, textvariable=self.server_info_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=2, column=1, sticky='w', padx=10)
+
+        # IP адрес
+        ttk.Label(info_frame, text="IP адрес:", font=self.scale_font('Arial', 11)).grid(row=3, column=0, sticky='w', pady=3)
+        self.ip_address_var = tk.StringVar(value="—")
+        ttk.Label(info_frame, textvariable=self.ip_address_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=3, column=1, sticky='w', padx=10)
+
         # Фрейм с управлением
         control_frame = ttk.Frame(self.monitor_frame)
         control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(20))
@@ -1287,7 +1392,6 @@ class InternetSpeedMonitor:
         self.status_var.set("Готов к работе")
         status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=5)
         status_bar.pack(fill='x', padx=self.scale_value(15), pady=(0, self.scale_value(15)))
-
 
     def setup_graph_tab(self):
         """Настройка вкладки с графиками"""
@@ -1971,22 +2075,61 @@ class InternetSpeedMonitor:
             os.unlink(stdout_temp.name)
             os.unlink(stderr_temp.name)
 
-            # Парсим название сервера
+            # Парсим информацию о сервере и IP
             server_name = "OpenSpeedTest"
+            server_city = "Неизвестно"
+            server_provider = "Неизвестно"
+            client_ip = "Неизвестно"
+            
             lines = stdout.split('\n')
             for line in lines:
                 if "Лучший сервер найден:" in line:
                     try:
                         full = line.split("Лучший сервер найден:", 1)[1].strip()
                         clean = re.sub(r'\s*\(\d+\.?\d*\s*мс\s*\)\s*$', '', full)
-                        if '(' in clean and clean.count('(') > 1:
-                            parts = clean.split('(', 2)
-                            server_name = parts[0].strip() + ' (' + parts[1].strip()
+                        
+                        # Пытаемся выделить город и провайдера
+                        if '(' in clean:
+                            # Формат: "Москва, Россия (СПУТНИК)"
+                            parts = clean.split('(', 1)
+                            city_country = parts[0].strip()
+                            provider = parts[1].rstrip(')').strip()
+                        elif ',' in clean:
+                            # Формат: "Москва, Россия, СПУТНИК" или "Москва, Россия"
+                            parts = clean.split(',', 1)
+                            city_country = parts[0].strip()
+                            remaining = parts[1].strip() if len(parts) > 1 else ""
+                            
+                            if ',' in remaining:
+                                # Еще одна запятая - значит есть провайдер
+                                subparts = remaining.split(',', 1)
+                                provider = subparts[1].strip()
+                            else:
+                                provider = remaining if remaining else "Неизвестно"
                         else:
-                            server_name = clean
+                            city_country = clean
+                            provider = "Неизвестно"
+                        
+                        server_name = clean
+                        server_city = city_country
+                        server_provider = provider
                         break
+                    except Exception as e:
+                        self.logger.warning(f"Error parsing server info: {e}")
+                
+                # Парсим внешний IP (если есть в выводе)
+                if "Your IP:" in line or "Client IP:" in line or "IP:" in line:
+                    try:
+                        parts = line.split(':', 1)
+                        if len(parts) > 1:
+                            ip_candidate = parts[1].strip()
+                            # Простая проверка что это похоже на IP
+                            if re.match(r'^\d+\.\d+\.\d+\.\d+$', ip_candidate):
+                                client_ip = ip_candidate
                     except:
                         pass
+            
+            self.logger.info(f"Server: {server_name}, City: {server_city}, Provider: {server_provider}, Client IP: {client_ip}")
 
             # Парсим значения (инициализируем как None, чтобы отличать от 0)
             download_speed = None
@@ -2040,7 +2183,38 @@ class InternetSpeedMonitor:
                 console_animation_thread.join(timeout=1)
 
             # Сохраняем результаты (даже частичные)
-            self.save_test_results(download_speed, upload_speed, ping, jitter, server_name)
+            self.save_test_results(
+                download_speed, 
+                upload_speed, 
+                ping, 
+                jitter, 
+                server_name,
+                server_city,
+                server_provider,
+                client_ip
+            )
+
+            # Получаем информацию об IP и провайдере
+            ip_info = self.get_external_ip_info()
+            client_ip = ip_info.get('ip', 'Неизвестно')
+            provider_name = ip_info.get('provider', 'Неизвестно')
+            connection_type = ip_info.get('connection_type', 'Неизвестно')
+            
+            self.logger.info(f"Client IP: {client_ip}, Provider: {provider_name}, Type: {connection_type}")
+            
+            # Сохраняем результаты с полной информацией
+            self.save_test_results(
+                download_speed, 
+                upload_speed, 
+                ping, 
+                jitter, 
+                server_name,
+                server_city,
+                server_provider,
+                client_ip,
+                provider_name,
+                connection_type
+            )
 
             # Обновляем интерфейс с полученными значениями
             self.root.after(0, lambda: self._update_ui_with_results_and_status(
@@ -2128,51 +2302,65 @@ class InternetSpeedMonitor:
         # После завершения очищаем строку
         print("\r" + " " * 30 + "\r", end='', flush=True)
 
-    def save_test_results(self, download, upload, ping, jitter, server):
-        """Сохранение результатов теста в БД (поддерживает частичные данные)"""
+    def save_test_results(self, download, upload, ping, jitter, server, server_city="", server_provider="", 
+                          client_ip="", client_provider="", connection_type=""):
+        """Сохранение результатов теста в БД"""
         try:
-            # Подготавливаем значения: None заменяем на NULL в БД
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Проверяем наличие колонок
+            cursor.execute("PRAGMA table_info(speed_measurements)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # Добавляем новые колонки если их нет
+            new_columns = {
+                'server_city': 'TEXT',
+                'server_provider': 'TEXT',
+                'client_ip': 'TEXT',
+                'client_provider': 'TEXT',
+                'connection_type': 'TEXT'
+            }
+            
+            for col_name, col_type in new_columns.items():
+                if col_name not in columns:
+                    cursor.execute(f'ALTER TABLE speed_measurements ADD COLUMN {col_name} {col_type}')
+            
             cursor.execute('''
                 INSERT INTO speed_measurements 
-                (timestamp, download_speed, upload_speed, ping, jitter, server) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                (timestamp, download_speed, upload_speed, ping, jitter, server, 
+                 server_city, server_provider, client_ip, client_provider, connection_type) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), 
-                download,  # может быть None
-                upload,    # может быть None
-                ping,      # может быть None
-                jitter,    # может быть None
-                server
+                download, upload, ping, jitter, server,
+                server_city, server_provider, client_ip, client_provider, connection_type
             ))
             
             conn.commit()
             conn.close()
             
-            # Обновляем время последнего измерения (если есть хоть какие-то данные)
-            if download is not None or upload is not None or ping is not None or jitter is not None:
-                current_time = datetime.now().strftime('%d.%m.%y %H:%M')
-                self.last_check_var.set(current_time)
-
-            # Обновляем отображение текущих значений (None заменяем на 0)
-            self.download_var.set(f"{download:.2f} Mbps" if download is not None else "0 Mbps")
-            self.upload_var.set(f"{upload:.2f} Mbps" if upload is not None else "0 Mbps")
-            self.ping_var.set(f"{ping:.2f} ms" if ping is not None else "0 ms")
-            self.jitter_var.set(f"{jitter:.2f} ms" if jitter is not None else "0 ms")
-
-            # Обновляем цвета согласно нормам
+            # Обновляем интерфейс
+            self.download_var.set(f"{download:.2f} Mbps" if download else "0 Mbps")
+            self.upload_var.set(f"{upload:.2f} Mbps" if upload else "0 Mbps")
+            self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
+            self.jitter_var.set(f"{jitter:.2f} ms" if jitter else "0 ms")
+            
+            # Обновляем новую информацию
+            self.provider_var.set(client_provider if client_provider else "—")
+            self.connection_type_var.set(connection_type if connection_type else "—")
+            self.server_info_var.set(server if server else "—")
+            self.ip_address_var.set(client_ip if client_ip else "—")
+            
+            self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
             self.update_monitor_tab_colors()
-
-            # Обновляем журнал и графики
+            
             self.root.after(0, self.update_log)
             self.root.after(0, self.update_graph)
             
-            # Логируем что сохранили
             self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
             
-        except Error as e:
+        except Exception as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
 
 
