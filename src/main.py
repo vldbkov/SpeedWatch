@@ -427,6 +427,7 @@ class InternetSpeedMonitor:
         conn.commit()
         conn.close()
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def check_database_integrity(self):
         """Проверка целостности базы данных при запуске"""
         try:
@@ -472,7 +473,9 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка при проверке целостности БД: {e}")
             return False
+# endregion
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def recover_database(self):
         """Восстановление поврежденной базы данных"""
         try:
@@ -506,7 +509,7 @@ class InternetSpeedMonitor:
                 "Ошибка восстановления",
                 f"Не удалось восстановить базу данных: {e}"
             )
-
+# endregion
 
     def get_last_measurement_time(self):
         """Получение времени последнего измерения из БД"""
@@ -681,6 +684,8 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
 
+# region Можно осторожно менять
+
     def update_monitor_tab_colors(self):
         """Обновление цветов на вкладке моторинга согласно нормам"""
         try:
@@ -759,6 +764,7 @@ class InternetSpeedMonitor:
             
         except Exception as e:
             self.logger.error(f"Ошибка обновления цветов мониторинга: {e}")
+# endregion
 
     def update_planned_speed_indicator(self):
         """Обновить индикатор заявленной скорости"""
@@ -783,6 +789,8 @@ class InternetSpeedMonitor:
             else:
                 self.planned_speed_indicator.config(text="")
 
+
+# region ### Можно осторожно менять
     def analyze_connection_quality(self):
         """Анализ качества соединения за последнюю неделю"""
         conn = None
@@ -887,7 +895,9 @@ class InternetSpeedMonitor:
             # Гарантированно закрываем соединение, если оно еще открыто
             if conn:
                 conn.close()
+# endregion
 
+# region ### Можно осторожно менять
     def show_quality_warning(self, issues, avg_download, avg_upload, avg_ping, avg_jitter, count):
         """Показать предупреждение о низком качестве соединения"""
         
@@ -912,6 +922,7 @@ class InternetSpeedMonitor:
             "Качество соединения",
             message
         ))
+# endregion
 
     def show_about_window(self):
         """Показать окно 'О программе'"""
@@ -1169,6 +1180,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка открытия ссылки: {e}")
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def setup_console(self):
         """Настройка консоли Windows"""
         try:
@@ -1201,8 +1213,9 @@ class InternetSpeedMonitor:
                 self.logger.info("Кнопка закрытия консоли отключена, кнопки свернуть/развернуть активны")
         except Exception as e:
             self.logger.error(f"Ошибка настройки консоли: {e}")
+# endregion
 
-
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def hide_console_on_start(self):
         """Скрыть консоль при старте"""
         try:
@@ -1214,6 +1227,7 @@ class InternetSpeedMonitor:
                 self.console_visible = False
         except Exception as e:
             self.logger.error(f"Ошибка скрытия консоли при старте: {e}")
+# endregion
 
     def close_console(self):
         """Закрыть консольное окно при выходе"""
@@ -1226,6 +1240,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка закрытия консоли: {e}")
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def toggle_console(self, icon, item):
         """Переключение видимости консоли"""
         try:
@@ -1247,6 +1262,7 @@ class InternetSpeedMonitor:
                     
         except Exception as e:
             self.logger.error(f"Ошибка переключения консоли: {e}")
+# endregion
 
     def hide_console(self):
         """Принудительно скрыть консольное окно"""
@@ -1971,8 +1987,8 @@ class InternetSpeedMonitor:
         self.date_from_entry.set_date(first_date)
         self.date_to_entry.set_date(datetime.now().date())
         self.update_log()       
-    ###    
-
+   
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def update_autostart(self):
         """Добавление/удаление из автозапуска Windows"""
         try:
@@ -2010,7 +2026,7 @@ class InternetSpeedMonitor:
             winreg.CloseKey(key)
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
-
+# endregion
 
     def run_speed_test(self):
         """Запуск теста скорости интернета"""
@@ -2037,6 +2053,7 @@ class InternetSpeedMonitor:
         test_thread = threading.Thread(target=self._perform_speed_test, daemon=True)
         test_thread.start()
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def start_test_animation(self):
         """Запуск анимации выполнения теста в статус-баре"""
         if not self.test_in_progress:
@@ -2049,7 +2066,9 @@ class InternetSpeedMonitor:
         
         # Запускаем следующее обновление через 200 мс
         self.animation_job = self.root.after(200, self.start_test_animation)
+# endregion
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def start_wait_animation(self):
         """Запуск анимации ожидания следующего теста"""
         if not self.running or self.test_in_progress:
@@ -2063,13 +2082,17 @@ class InternetSpeedMonitor:
         
         # Запускаем следующее обновление через 500 мс
         self.wait_animation_job = self.root.after(500, self.start_wait_animation)
+# endregion
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def stop_wait_animation(self):
         """Остановка анимации ожидания"""
         if self.wait_animation_job:
             self.root.after_cancel(self.wait_animation_job)
             self.wait_animation_job = None
+# endregion
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def stop_test_animation(self):
         """Остановка анимации теста"""
         if self.animation_job:
@@ -2086,6 +2109,7 @@ class InternetSpeedMonitor:
             self.status_var.set("Ожидание команды")
             if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
                 print("\rОжидание команды" + " " * 20, flush=True)
+# endregion
 
     def _perform_speed_test(self):
         """Выполнение теста скорости через внешний openspeedtest-cli"""
@@ -2416,6 +2440,7 @@ class InternetSpeedMonitor:
         self.test_button.config(state='normal')
         messagebox.showerror("Ошибка", f"Не удалось выполнить тест скорости: {error_msg}")
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def _console_animation(self, stop_event):
         """Анимация в консоли во время теста (мигает только слеш)"""
         chars = ['-', '\\', '|', '/']
@@ -2429,6 +2454,7 @@ class InternetSpeedMonitor:
             time.sleep(0.2)
         # После завершения очищаем строку
         print("\r" + " " * 30 + "\r", end='', flush=True)
+# endregion
 
     def save_test_results(self, download, upload, ping, jitter, server, server_city="", server_provider="", 
                           client_ip="", client_provider="", connection_type=""):
@@ -2496,7 +2522,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
 
-
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def start_monitoring(self):
         """Запуск периодического мониторинга"""
         if self.running:
@@ -2521,7 +2547,9 @@ class InternetSpeedMonitor:
         
         self.status_var.set("Мониторинг запущен")
         self.logger.info("Мониторинг запущен")
-        
+# endregion
+
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def stop_monitoring(self):
         """Остановка мониторинга"""
         self.logger.info("ОСТАНОВКА МОНИТОРИНГА")
@@ -2540,7 +2568,9 @@ class InternetSpeedMonitor:
         self.status_var.set("Мониторинг остановлен")
         self.next_test_var.set("--:--:--")
         self.logger.info("Мониторинг остановлен")
+# endregion
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def _monitoring_loop(self):
         """Цикл периодического мониторинга"""
         while self.running:
@@ -2559,7 +2589,9 @@ class InternetSpeedMonitor:
             except Exception as e:
                 self.logger.error(f"Ошибка в цикле мониторинга: {e}")
                 time.sleep(60)
+# endregion
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def update_next_test_timer(self):
         """Обновление таймера до следующего теста"""
         if not self.running:
@@ -2584,6 +2616,7 @@ class InternetSpeedMonitor:
                     self.start_wait_animation()
             else:
                 self.next_test_time = now + timedelta(minutes=self.interval_var.get())
+# endregion
 
     def update_log(self):
         """Обновление журнала измерений"""
@@ -2740,7 +2773,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка автонастройки столбцов: {e}")           
           
-
+# region ### Можно осторожно менять
     def update_graph(self):
         """Обновление графиков"""
         try:
@@ -2927,7 +2960,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка обновления графика: {e}")
             self.status_var.set(f"Ошибка обновления графика: {e}")
-
+# endregion
 
     def export_graph(self):
         """Экспорт графика в PNG"""
@@ -2948,7 +2981,7 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
 
-
+# region ### Можно осторожно менять
     def export_log(self):
         """Экспорт журнала в CSV (сырые данные из БД)"""
         try:
@@ -3008,6 +3041,7 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка экспорта журнала: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
+# endregion
 
     def clear_log(self):
         """Очистка журнала"""
@@ -3126,6 +3160,7 @@ class InternetSpeedMonitor:
         self.root.destroy()
         os._exit(0)
 
+# region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
 def check_if_already_running():
     """Проверка через файловую блокировку - не запущено ли уже приложение"""
     global _lock_file
@@ -3199,6 +3234,7 @@ def check_if_already_running():
         print(f"[DEBUG] Ошибка при проверке лока: {e}")
         # Если ошибка - даем разрешение на запуск (лучше двойной запуск, чем запирание)
         return False
+# endregion
 
 def parse_arguments():
     """Парсинг аргументов командной строки"""
