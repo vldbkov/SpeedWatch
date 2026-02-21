@@ -1234,17 +1234,15 @@ class InternetSpeedMonitor:
             
             if hasattr(self, 'hwnd') and self.hwnd:
                 if self.console_visible:
-                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
+                    # Скрыть консоль
+                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
                     self.console_visible = False
-                    self.logger.info("Консоль скрыта")
                 else:
-                    # Пробуем разные способы показать консоль
-                    user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
-                    user32.ShowWindow(self.hwnd, 5)  # SW_SHOW
-                    user32.SetForegroundWindow(self.hwnd)
+                    # Показать консоль (SW_RESTORE = 9)
+                    user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE - восстанавливает окно
                     self.console_visible = True
-                    self.logger.info("Консоль показана")
                 
+                # Обновляем меню с новым текстом
                 self.update_tray_menu()
                     
         except Exception as e:
