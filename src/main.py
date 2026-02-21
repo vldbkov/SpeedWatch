@@ -147,7 +147,7 @@ def get_dpi_scale_factor():
 class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
-
+        
         # Определяем корневую директорию проекта
         if getattr(sys, 'frozen', False):
             self.base_dir = os.path.dirname(sys.executable)
@@ -288,7 +288,7 @@ class InternetSpeedMonitor:
         # Загрузка настроек
         self.is_first_load = True  # Флаг первого запуска
         self.load_settings()
-
+        
         # Загружаем последние значения измерений
         self.load_last_measurement()
 
@@ -1234,19 +1234,22 @@ class InternetSpeedMonitor:
             
             if hasattr(self, 'hwnd') and self.hwnd:
                 if self.console_visible:
-                    # Скрыть консоль
-                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
+                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
                     self.console_visible = False
+                    self.logger.info("Консоль скрыта")
                 else:
-                    # Показать консоль (SW_RESTORE = 9)
-                    user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE - восстанавливает окно
+                    # Пробуем разные способы показать консоль
+                    user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
+                    user32.ShowWindow(self.hwnd, 5)  # SW_SHOW
+                    user32.SetForegroundWindow(self.hwnd)
                     self.console_visible = True
+                    self.logger.info("Консоль показана")
                 
-                # Обновляем меню с новым текстом
                 self.update_tray_menu()
                     
         except Exception as e:
             self.logger.error(f"Ошибка переключения консоли: {e}")
+
     def hide_console(self):
         """Принудительно скрыть консольное окно"""
         try:
@@ -1988,37 +1991,25 @@ class InternetSpeedMonitor:
             python_dir = os.path.dirname(sys.executable)
             pythonw_path = os.path.join(python_dir, "pythonw.exe")
             
-            # Если pythonw.exe не найден, используем python.exe
             if not os.path.exists(pythonw_path):
                 pythonw_path = sys.executable
             
             if getattr(sys, 'frozen', False):
-                # EXE режим - путь к exe файлу
                 script_path = sys.executable
             else:
-                # Режим разработки - путь к main.py
                 script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "main.py")
             
-            # Проверяем существование файла
-            if not os.path.exists(script_path):
-                # Если не нашли, используем текущий файл
-                script_path = os.path.abspath(__file__)
-                self.logger.warning(f"Путь по умолчанию не найден, использую: {script_path}")
-            
             if self.auto_start_var.get():
-                # Формируем команду
                 cmd = f'"{pythonw_path}" "{script_path}"'
                 winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
                 self.logger.info(f"Добавлено в автозапуск: {cmd}")
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
-                    self.logger.info("Удалено из автозапуска")
                 except FileNotFoundError:
                     pass
             
             winreg.CloseKey(key)
-                
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
 
@@ -2029,6 +2020,7 @@ class InternetSpeedMonitor:
             self.logger.warning("Тест уже выполняется, пропускаем")
             return
             
+        self.logger.info("ЗАПУСК ТЕСТА СКОРОСТИ")
         self.test_in_progress = True
         
         # Останавливаем анимацию ожидания
@@ -2090,17 +2082,12 @@ class InternetSpeedMonitor:
         if self.running:
             # Если мониторинг работает, запускаем анимацию ожидания
             self.start_wait_animation()
+            # Обновляем таймер
+            self.update_next_test_timer()
         else:
             self.status_var.set("Ожидание команды")
-            if sys.stdout.isatty():
+            if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
                 print("\rОжидание команды" + " " * 20, flush=True)
-        
-        # Восстанавливаем статус
-        if self.running:
-            # Если мониторинг работает, запускаем анимацию ожидания
-            self.start_wait_animation()
-        else:
-            self.status_var.set("Ожидание команды")
 
     def _perform_speed_test(self):
         """Выполнение теста скорости через внешний openspeedtest-cli"""
@@ -2116,7 +2103,7 @@ class InternetSpeedMonitor:
             import subprocess
             
             # Запускаем анимацию в консоли, если она доступна
-            if sys.stdout.isatty():  # Проверяем, что вывод идет в консоль
+            if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():  # Проверяем, что вывод идет в консоль
                 console_animation_thread = threading.Thread(
                     target=self._console_animation, 
                     args=(stop_animation,),
@@ -2380,11 +2367,23 @@ class InternetSpeedMonitor:
             if console_animation_thread and console_animation_thread.is_alive():
                 console_animation_thread.join(timeout=1)
             self.test_in_progress = False
+
+            # После успешного теста
+            self.logger.info(f"Тест завершен. self.running = {self.running}")
+
         finally:
+            self.logger.info(f"FINALLY: self.running = {self.running}, self.test_in_progress = {self.test_in_progress}")
             # Останавливаем анимацию в статус-баре
             self.root.after(0, self.stop_test_animation)
             self.test_in_progress = False
             self.root.after(0, lambda: self.test_button.config(state='normal'))
+            
+            # ВАЖНО: После завершения теста проверяем, нужно ли запустить мониторинг
+            if self.running:
+                self.logger.info("Мониторинг активен, обновляем таймер следующего теста")
+                self.root.after(0, self.update_next_test_timer)
+            else:
+                self.logger.info("Мониторинг не активен, таймер не обновляется")
 
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
@@ -2503,11 +2502,10 @@ class InternetSpeedMonitor:
     def start_monitoring(self):
         """Запуск периодического мониторинга"""
         if self.running:
+            self.logger.info("Мониторинг уже запущен")
             return
 
-        # Выполняем анализ качества при старте мониторинга
-        self.root.after(1000, self.analyze_connection_quality)
-
+        self.logger.info("ЗАПУСК МОНИТОРИНГА")
         self.running = True
         self.start_button.config(state='disabled')
         self.stop_button.config(state='normal')
@@ -2520,18 +2518,22 @@ class InternetSpeedMonitor:
         self.monitor_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
         self.monitor_thread.start()
         
+        # Выполняем анализ качества при старте мониторинга
+        self.root.after(1000, self.analyze_connection_quality)
+        
         self.status_var.set("Мониторинг запущен")
         self.logger.info("Мониторинг запущен")
-
+        
     def stop_monitoring(self):
         """Остановка мониторинга"""
+        self.logger.info("ОСТАНОВКА МОНИТОРИНГА")
         self.running = False
         
         # Останавливаем анимацию ожидания
         self.stop_wait_animation()
         
         # Очищаем консоль
-        if sys.stdout.isatty():
+        if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
             print("\r" + " " * 50 + "\r", end='', flush=True)
         
         self.start_button.config(state='normal')
@@ -2560,13 +2562,11 @@ class InternetSpeedMonitor:
                 self.logger.error(f"Ошибка в цикле мониторинга: {e}")
                 time.sleep(60)
 
-
     def update_next_test_timer(self):
         """Обновление таймера до следующего теста"""
         if not self.running:
             return
         
-        # НЕ обновляем статус, если выполняется тест
         if self.test_in_progress:
             return
             
@@ -2579,15 +2579,12 @@ class InternetSpeedMonitor:
                 timer_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                 self.next_test_var.set(timer_text)
                 
-                # Вывод в консоль ТОЛЬКО таймера, без анимации точками
-                if sys.stdout.isatty():
+                if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
                     print(f"\rСледующий тест через: {timer_text}   ", end='', flush=True)
                 
-                # Запускаем анимацию ожидания в GUI, если она еще не запущена
                 if not self.wait_animation_job:
                     self.start_wait_animation()
             else:
-                # Время пришло, обновляем следующее время
                 self.next_test_time = now + timedelta(minutes=self.interval_var.get())
 
     def update_log(self):
@@ -3300,7 +3297,7 @@ def main():
         except:
             safe_print(error_msg)
             input("Нажмите Enter для выхода...")
-        
+
     finally:
         # Гарантированное освобождение лока при выходе
         if _lock_file:
