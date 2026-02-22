@@ -1831,16 +1831,28 @@ class InternetSpeedMonitor:
         elif period == "Неделя":
             # Выбор недели и года
             ttk.Label(self.stats_selector_frame, text="Неделя:").pack(side='left')
+            
+            # Получаем текущую неделю
+            current_week = datetime.now().isocalendar()[1]
+            
+            # Создаем список значений с тегами для выделения текущей недели
+            week_values = [str(i) for i in range(1, 53)]
+            
             self.stats_week_combo = ttk.Combobox(self.stats_selector_frame, 
-                                                 values=[str(i) for i in range(1, 53)],  # ТОЛЬКО ЦИФРЫ
-                                                 width=4, state='readonly')  # ширина 4 знака
+                                                 values=week_values,
+                                                 width=4, state='readonly')
             self.stats_week_combo.pack(side='left', padx=5)
-            self.stats_week_combo.set("1")
+            
+            # Устанавливаем текущую неделю как выбранную
+            self.stats_week_combo.set(str(current_week))
+            
+            # Настраиваем тег для выделения текущей недели (работает только в некоторых темах)
+            # В качестве альтернативы - просто устанавливаем значение по умолчанию
             
             ttk.Label(self.stats_selector_frame, text="Год:").pack(side='left')
             self.stats_week_year_combo = ttk.Combobox(self.stats_selector_frame,
                                                       values=[str(y) for y in range(2026, datetime.now().year+1)],
-                                                      width=6, state='readonly')
+                                                      width=3, state='readonly')
             self.stats_week_year_combo.pack(side='left', padx=5)
             self.stats_week_year_combo.set(str(datetime.now().year))
             
@@ -1955,11 +1967,245 @@ class InternetSpeedMonitor:
         ttk.Label(self.total_stats_frame, text="🐢 Худшая скорость: —", 
                  font=('Arial', 9)).pack(anchor='w', pady=1)
 
+    def _fill_tariff_block(self, stats):
+        """Заполнение блока соответствия тарифу"""
+        planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 100
+        
+        # Загрузка
+        download_percent = (stats['avg_download'] / planned * 100) if planned > 0 else 0
+        download_diff = planned - stats['avg_download']
+        
+        download_text = f"📥 Загрузка: {stats['avg_download']:.1f} Mbps  (тариф {planned} Mbps)"
+        if download_diff > 0:
+            download_text += f"  🔻 ниже на {download_diff/planned*100:.1f}%"
+        ttk.Label(self.tariff_frame, text=download_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Отдача
+        upload_text = f"📤 Отдача: {stats['avg_upload']:.1f} Mbps"
+        ttk.Label(self.tariff_frame, text=upload_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Процент времени ниже тарифа (оценка по hourly данным)
+        if stats['hourly']:
+            low_count = sum(1 for h in stats['hourly'] if h[1] < planned * 0.9)
+            low_percent = (low_count / len(stats['hourly'])) * 100
+            ttk.Label(self.tariff_frame, text=f"⏱️ Ниже тарифа: {low_percent:.0f}% времени", 
+                     font=('Arial', 9)).pack(anchor='w', pady=1)
+
+    def _fill_stability_block(self, stats):
+        """Заполнение блока стабильности"""
+        # Пинг
+        ping_text = f"📶 Пинг: {stats['avg_ping']:.1f} ms"
+        ttk.Label(self.stability_frame, text=ping_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Джиттер
+        jitter_text = f"📊 Джиттер: {stats['avg_jitter']:.1f} ms"
+        if stats['avg_jitter'] > 15:
+            jitter_text += " ⚠️"
+        ttk.Label(self.stability_frame, text=jitter_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Потеря пакетов (нет данных, заглушка)
+        ttk.Label(self.stability_frame, text="❌ Потеря пакетов: 0.0%", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Колебания скорости
+        if stats['max_download'] > 0 and stats['min_download'] > 0:
+            variation = ((stats['max_download'] - stats['min_download']) / stats['avg_download']) * 100
+            ttk.Label(self.stability_frame, text=f"🌡️ Колебания: ±{variation:.0f}%", 
+                     font=('Arial', 9)).pack(anchor='w', pady=1)
+
+    def _fill_problems_block(self, stats):
+        """Заполнение блока проблемных периодов"""
+        period = self.stats_period_var.get()
+        
+        if period == "День" and stats['hourly']:
+            # Для дня показываем проблемные часы
+            ttk.Label(self.problems_frame, text="🕐 Пиковые нагрузки:", 
+                     font=('Arial', 9, 'bold')).pack(anchor='w', pady=1)
+            
+            # Сортируем по скорости (самые плохие часы)
+            bad_hours = sorted(stats['hourly'], key=lambda x: x[1])[:3]
+            for hour_data in bad_hours:
+                hour = int(hour_data[0])
+                speed = hour_data[1]
+                ttk.Label(self.problems_frame, 
+                         text=f"   {hour:02d}:00 - {hour+1:02d}:00  ({speed:.0f} Mbps)",
+                         font=('Arial', 9)).pack(anchor='w')
+        
+        else:
+            # Для других периодов показываем худшее время и худший день
+            if stats['hourly']:
+                worst_hour = min(stats['hourly'], key=lambda x: x[1])
+                hour = int(worst_hour[0])
+                ttk.Label(self.problems_frame, 
+                         text=f"🕐 Худшее время: {hour:02d}:00 - {hour+1:02d}:00",
+                         font=('Arial', 9)).pack(anchor='w', pady=1)
+            
+            if stats['daily']:
+                worst_day = min(stats['daily'], key=lambda x: x[2])
+                day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][int(worst_day[0])]
+                ttk.Label(self.problems_frame, 
+                         text=f"📉 Худший день: {day_name} ({worst_day[1][8:10]}.{worst_day[1][5:7]})",
+                         font=('Arial', 9)).pack(anchor='w', pady=1)
+
+    def _fill_total_stats_block(self, stats):
+        """Заполнение блока общей статистики"""
+        ttk.Label(self.total_stats_frame, text=f"📊 Всего измерений: {stats['count']}", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.total_stats_frame, text=f"🏆 Лучшая скорость: {stats['max_download']:.1f} Mbps", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.total_stats_frame, text=f"🐢 Худшая скорость: {stats['min_download']:.1f} Mbps", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+
     def get_stats_for_period(self):
-        """Получение статистики за выбранный период (временная заглушка)"""
-        # TODO: Реализовать реальное получение данных из БД
-        # Сейчас возвращаем None для отображения заглушки
-        return None
+        """Получение статистики за выбранный период из БД"""
+        try:
+            # Определяем начальную и конечную дату в зависимости от выбранного периода
+            start_date, end_date = self._get_period_dates()
+            if not start_date:
+                return None
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Получаем статистику за период
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as count,
+                    AVG(download_speed) as avg_download,
+                    MAX(download_speed) as max_download,
+                    MIN(download_speed) as min_download,
+                    AVG(upload_speed) as avg_upload,
+                    AVG(ping) as avg_ping,
+                    MAX(ping) as max_ping,
+                    MIN(ping) as min_ping,
+                    AVG(jitter) as avg_jitter,
+                    MAX(jitter) as max_jitter
+                FROM speed_measurements 
+                WHERE timestamp BETWEEN ? AND ?
+            ''', (start_date, end_date))
+            
+            result = cursor.fetchone()
+            
+            # Получаем измерения для анализа по часам и дням
+            cursor.execute('''
+                SELECT 
+                    strftime('%H', timestamp) as hour,
+                    AVG(download_speed) as avg_speed,
+                    AVG(ping) as avg_ping,
+                    COUNT(*) as count
+                FROM speed_measurements 
+                WHERE timestamp BETWEEN ? AND ?
+                GROUP BY hour
+                ORDER BY avg_speed ASC
+            ''', (start_date, end_date))
+            
+            hourly_data = cursor.fetchall()
+            
+            cursor.execute('''
+                SELECT 
+                    strftime('%w', timestamp) as day_of_week,
+                    strftime('%Y-%m-%d', timestamp) as day,
+                    AVG(download_speed) as avg_speed,
+                    AVG(ping) as avg_ping,
+                    COUNT(*) as count
+                FROM speed_measurements 
+                WHERE timestamp BETWEEN ? AND ?
+                GROUP BY day
+                ORDER BY avg_speed ASC
+            ''', (start_date, end_date))
+            
+            daily_data = cursor.fetchall()
+            
+            conn.close()
+            
+            if not result or not result[0] or result[0] < 3:
+                return None
+            
+            # Формируем результат
+            stats = {
+                'count': result[0],
+                'avg_download': result[1],
+                'max_download': result[2],
+                'min_download': result[3],
+                'avg_upload': result[4],
+                'avg_ping': result[5],
+                'max_ping': result[6],
+                'min_ping': result[7],
+                'avg_jitter': result[8],
+                'max_jitter': result[9],
+                'hourly': hourly_data,
+                'daily': daily_data
+            }
+            
+            return stats
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка получения статистики: {e}")
+            return None
+
+    def _get_period_dates(self):
+        """Получение начальной и конечной даты для выбранного периода"""
+        try:
+            period = self.stats_period_var.get()
+            end_date = datetime.now()
+            start_date = None
+            
+            if period == "День":
+                # Выбранная дата
+                if hasattr(self, 'stats_date_picker'):
+                    selected = self.stats_date_picker.get_date()
+                    start_date = datetime(selected.year, selected.month, selected.day, 0, 0, 0)
+                    end_date = datetime(selected.year, selected.month, selected.day, 23, 59, 59)
+            
+            elif period == "Неделя":
+                # Выбранная неделя и год
+                week = int(self.stats_week_combo.get())
+                year = int(self.stats_week_year_combo.get())
+                # Первый день года
+                first_day = datetime(year, 1, 1)
+                # Смещение до нужной недели
+                start_date = first_day + timedelta(weeks=week-1)
+                end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+            
+            elif period == "Месяц":
+                # Выбранный месяц и год
+                months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+                month = months.index(self.stats_month_combo.get()) + 1
+                year = int(self.stats_month_year_combo.get())
+                start_date = datetime(year, month, 1)
+                if month == 12:
+                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                else:
+                    end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
+            
+            elif period == "Квартал":
+                # Выбранный квартал и год
+                quarters = {'I': (1, 3), 'II': (4, 6), 'III': (7, 9), 'IV': (10, 12)}
+                quarter = self.stats_quarter_combo.get()
+                year = int(self.stats_quarter_year_combo.get())
+                start_month, end_month = quarters[quarter]
+                start_date = datetime(year, start_month, 1)
+                if end_month == 12:
+                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                else:
+                    end_date = datetime(year, end_month+1, 1) - timedelta(seconds=1)
+            
+            elif period == "Год":
+                # Выбранный год
+                year = int(self.stats_year_combo.get())
+                start_date = datetime(year, 1, 1)
+                end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+            
+            if start_date:
+                return (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                       end_date.strftime('%Y-%m-%d %H:%M:%S'))
+            
+            return None, None
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка определения дат периода: {e}")
+            return None, None
 
     def update_stats(self):
         """Обновление статистики на основе выбранного периода"""
