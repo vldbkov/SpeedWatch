@@ -227,14 +227,11 @@ class InternetSpeedMonitor:
 
         self.lock_file = None
         self.lock_file_path = os.path.join(tempfile.gettempdir(), "internet_monitor.lock")
+
         self.setup_logging() # СНАЧАЛА настраиваем логирование
-
         self.logger.info(f"Base directory: {self.base_dir}")         # ПОТОМ используем logger
-
-        self.setup_database()
-
-        # Проверяем целостность БД при запуске
-        self.check_database_integrity()
+        self.setup_database()        
+        self.check_database_integrity()  # Проверяем целостность БД при запуске
 
         # Управление консолью
         self.console_visible = False  # Начинаем со скрытой консоли
@@ -377,21 +374,15 @@ class InternetSpeedMonitor:
 
 
     def setup_logging(self):
-        """Настройка логирования"""
-        # Используем self.data_dir (уже определен в __init__)
-        log_dir = self.data_dir
+        """Настройка логирования - только в файл"""
+        log_path = os.path.join(self.base_dir, "data", "speed_monitor.log")
         
-        # Создаем директорию если её нет
-        os.makedirs(log_dir, exist_ok=True)
-        
-        log_path = os.path.join(log_dir, "speed_monitor.log")
-        
+        # Только файловый логгер, без консоли
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_path, encoding='utf-8'),
-                logging.StreamHandler()
+                logging.FileHandler(log_path, encoding='utf-8')
             ]
         )
         self.logger = logging.getLogger(__name__)
@@ -1185,32 +1176,49 @@ class InternetSpeedMonitor:
         """Настройка консоли Windows"""
         try:
             import ctypes
-            from ctypes import wintypes
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
             
             # Получаем хендл консоли
-            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
             self.hwnd = kernel32.GetConsoleWindow()
+            
+            # Если консоли нет - создаем её
+            if not self.hwnd:
+                kernel32.AllocConsole()
+                self.hwnd = kernel32.GetConsoleWindow()
+                
+                # Перенаправляем stdout и stderr
+                sys.stdout = open('CONOUT$', 'w', encoding='utf-8')
+                sys.stderr = open('CONOUT$', 'w', encoding='utf-8')
+                
+                # Обновляем логгер - заменяем StreamHandler
+                for handler in self.logger.handlers[:]:
+                    if isinstance(handler, logging.StreamHandler):
+                        self.logger.removeHandler(handler)
+                
+                # Добавляем новый StreamHandler для новой консоли
+                console_handler = logging.StreamHandler(sys.stdout)
+                console_handler.setLevel(logging.INFO)
+                console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+                self.logger.addHandler(console_handler)
+                
+                self.logger.info("Консоль создана принудительно")
             
             if self.hwnd:
                 # Убираем ТОЛЬКО кнопку закрытия (крестик), оставляем свернуть и развернуть
                 user32 = ctypes.WinDLL('user32', use_last_error=True)
                 GWL_STYLE = -16
                 
-                # Получаем текущие стили
                 style = user32.GetWindowLongW(self.hwnd, GWL_STYLE)
-                
-                # Убираем только системное меню (крестик), оставляем остальные кнопки
                 style = style & ~0x00080000  # Убираем WS_SYSMENU
-                style = style | 0x00020000   # Добавляем WS_MINIMIZEBOX (если не было)
-                style = style | 0x00010000   # Добавляем WS_MAXIMIZEBOX (если не было)
+                style = style | 0x00020000   # Добавляем WS_MINIMIZEBOX
+                style = style | 0x00010000   # Добавляем WS_MAXIMIZEBOX
                 
                 user32.SetWindowLongW(self.hwnd, GWL_STYLE, style)
-                
-                # Обновляем окно
                 user32.SetWindowPos(self.hwnd, 0, 0, 0, 0, 0, 
-                                  0x0001 | 0x0002 | 0x0020)  # SWP_NOSIZE | SWP_NOMOVE | SWP_FRAMECHANGED
+                                  0x0001 | 0x0002 | 0x0020)
                 
                 self.logger.info("Кнопка закрытия консоли отключена, кнопки свернуть/развернуть активны")
+                
         except Exception as e:
             self.logger.error(f"Ошибка настройки консоли: {e}")
 # endregion
@@ -1221,9 +1229,14 @@ class InternetSpeedMonitor:
         try:
             import ctypes
             user32 = ctypes.WinDLL('user32', use_last_error=True)
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
             
-            if hasattr(self, 'hwnd') and self.hwnd:
-                user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
+            # Получаем актуальный хендл
+            current_hwnd = kernel32.GetConsoleWindow()
+            
+            if current_hwnd:
+                user32.ShowWindow(current_hwnd, 0)  # SW_HIDE
+                self.hwnd = current_hwnd
                 self.console_visible = False
         except Exception as e:
             self.logger.error(f"Ошибка скрытия консоли при старте: {e}")
@@ -1249,15 +1262,12 @@ class InternetSpeedMonitor:
             
             if hasattr(self, 'hwnd') and self.hwnd:
                 if self.console_visible:
-                    # Скрыть консоль
-                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE = 0
+                    user32.ShowWindow(self.hwnd, 0)  # SW_HIDE
                     self.console_visible = False
                 else:
-                    # Показать консоль (SW_RESTORE = 9)
-                    user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE - восстанавливает окно
+                    user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
                     self.console_visible = True
                 
-                # Обновляем меню с новым текстом
                 self.update_tray_menu()
                     
         except Exception as e:
