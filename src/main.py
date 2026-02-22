@@ -1948,8 +1948,6 @@ class InternetSpeedMonitor:
                  font=('Arial', 9)).pack(anchor='w', pady=1)
         ttk.Label(self.stability_frame, text="📊 Джиттер: —", 
                  font=('Arial', 9)).pack(anchor='w', pady=1)
-        ttk.Label(self.stability_frame, text="❌ Потеря пакетов: —", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
         ttk.Label(self.stability_frame, text="🌡️ Колебания: —", 
                  font=('Arial', 9)).pack(anchor='w', pady=1)
         
@@ -2001,12 +1999,8 @@ class InternetSpeedMonitor:
         jitter_text = f"📊 Джиттер: {stats['avg_jitter']:.1f} ms"
         if stats['avg_jitter'] > 15:
             jitter_text += " ⚠️"
-        ttk.Label(self.stability_frame, text=jitter_text, font=('Arial', 9)).pack(anchor='w', pady=1)
-        
-        # Потеря пакетов (нет данных, заглушка)
-        ttk.Label(self.stability_frame, text="❌ Потеря пакетов: 0.0%", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
-        
+        ttk.Label(self.stability_frame, text=jitter_text, font=('Arial', 9)).pack(anchor='w', pady=1)        
+       
         # Колебания скорости
         if stats['max_download'] > 0 and stats['min_download'] > 0:
             variation = ((stats['max_download'] - stats['min_download']) / stats['avg_download']) * 100
