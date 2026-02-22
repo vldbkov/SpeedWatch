@@ -1444,10 +1444,6 @@ class InternetSpeedMonitor:
         self.log_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.log_frame, text='Журнал')
 
-        # === НОВАЯ ВКЛАДКА ===
-        self.stats_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.stats_frame, text='Статистика')
-
         # Вкладка настроек
         self.settings_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text='Настройки')
