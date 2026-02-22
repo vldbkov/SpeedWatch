@@ -260,6 +260,10 @@ class InternetSpeedMonitor:
         self.jitter_frequency_var = tk.IntVar(value=30)    # % частоты превышений
         # ===========================
 
+        # === ОЧИСТКА ИСТОРИИ ===
+        self.clean_enabled_var = tk.BooleanVar(value=True)
+        self.auto_clean_days_var = tk.IntVar(value=90)  # 90 дней по умолчанию
+
         # Создание интерфейса
         self.create_widgets()
         
@@ -288,6 +292,9 @@ class InternetSpeedMonitor:
         
         # Загружаем последние значения измерений
         self.load_last_measurement()
+
+        # Очистка старых записей при запуске
+        self.clean_old_records()
 
         self.is_first_load = False  # Сбрасываем после загрузки
         self.update_log()         # Обновляем журнал принудительно
@@ -501,6 +508,46 @@ class InternetSpeedMonitor:
                 f"Не удалось восстановить базу данных: {e}"
             )
 # endregion
+
+    def clean_old_records(self):
+        """Удаление записей старше заданного периода"""
+        if not self.clean_enabled_var.get() or self.auto_clean_days_var.get() == 0:
+            return
+            
+        try:
+            days = self.auto_clean_days_var.get()
+            cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM speed_measurements WHERE timestamp < ?', (cutoff_date,))
+            deleted = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            if deleted > 0:
+                self.logger.info(f"Автоматически удалено {deleted} записей старше {days} дней")
+                self.update_log()
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка при очистке старых записей: {e}")
+
+    def manual_clean_old(self):
+        """Ручная очистка старых записей"""
+        days = self.auto_clean_days_var.get()
+        if days == 0:
+            messagebox.showinfo("Очистка", "Период очистки не задан (0 дней)")
+            return
+            
+        result = messagebox.askyesno(
+            "Подтверждение",
+            f"Удалить все записи старше {days} дней?\n\n"
+            "Эта операция необратима!"
+        )
+        
+        if result:
+            self.clean_old_records()
+            messagebox.showinfo("Очистка", f"Записи старше {days} дней удалены")
 
     def get_last_measurement_time(self):
         """Получение времени последнего измерения из БД"""
@@ -1670,84 +1717,109 @@ class InternetSpeedMonitor:
         settings_frame = ttk.LabelFrame(self.settings_frame, text="Настройки мониторинга", padding=20)
         settings_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
-        # Интервал проверки
-        ttk.Label(settings_frame, text="Интервал проверки (минут):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=10)
-        self.interval_var = tk.IntVar(value=60)
-        ttk.Spinbox(settings_frame, from_=1, to=1440, textvariable=self.interval_var, width=10, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=10, sticky='w')
+        # === ВЕРХНЯЯ СТРОКА: Интервал + Автозапуск ===
+        top_frame = ttk.Frame(settings_frame)
+        top_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=5)
+        top_frame.columnconfigure(1, weight=1)
         
-        # Заявленная скорость по тарифу
-        ttk.Label(settings_frame, text="Заявленная скорость (Mbps):", font=self.scale_font('Arial', 10)).grid(row=1, column=0, sticky='w', pady=10)
+        # Интервал проверки (слева)
+        ttk.Label(top_frame, text="Интервал проверки (мин):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
+        self.interval_var = tk.IntVar(value=60)
+        ttk.Spinbox(top_frame, from_=1, to=1440, textvariable=self.interval_var, width=8, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=5, sticky='w')
+        
+        # Автозапуск (справа)
+        self.auto_start_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top_frame, text="Автозапуск при старте Windows", 
+                       variable=self.auto_start_var).grid(row=0, column=2, padx=(20,0), sticky='w')
+        
+        # === ВТОРАЯ СТРОКА: Заявленная скорость + Сворачивание ===
+        middle_frame = ttk.Frame(settings_frame)
+        middle_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=5)
+        middle_frame.columnconfigure(1, weight=1)
+        
+        # Заявленная скорость (слева)
+        ttk.Label(middle_frame, text="Заявленная скорость (Mbps):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
         self.planned_speed_var = tk.IntVar(value=100)
-        speed_spinbox = ttk.Spinbox(settings_frame, from_=0, to=10000, textvariable=self.planned_speed_var, width=10, font=self.scale_font('Arial', 10))
-        speed_spinbox.grid(row=1, column=1, padx=10, sticky='w')
-        ttk.Label(settings_frame, text="(0 = не учитывать)", font=self.scale_font('Arial', 8), foreground='gray').grid(row=1, column=2, sticky='w', padx=5)
+        ttk.Spinbox(middle_frame, from_=0, to=10000, textvariable=self.planned_speed_var, width=8, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=5, sticky='w')
+        ttk.Label(middle_frame, text="(0=не учитывать)", font=self.scale_font('Arial', 8), foreground='gray').grid(row=0, column=2, sticky='w')
+        
+        # Сворачивание в трей (справа)
+        self.minimize_to_tray_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(middle_frame, text="Сворачивать в трей", 
+                       variable=self.minimize_to_tray_var).grid(row=0, column=3, padx=(20,0), sticky='w')
+        
+        # === ТРЕТЬЯ СТРОКА: Кнопка сохранения ===
+        save_frame = ttk.Frame(settings_frame)
+        save_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=10)
+        
+        save_button = ttk.Button(save_frame, text="💾 Сохранить настройки", command=self.save_settings)
+        save_button.grid(row=0, column=0, sticky='w')
 
-        # === НОВЫЙ РАЗДЕЛ: Пороги качества ===
-        thresholds_frame = ttk.LabelFrame(settings_frame, text="Пороги качества соединения", padding=10)
-        thresholds_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=15, padx=0)
-        thresholds_frame.columnconfigure(1, weight=1)
+        # === ГОРИЗОНТАЛЬНЫЙ КОНТЕЙНЕР ДЛЯ ДВУХ БЛОКОВ ===
+        horizontal_frame = ttk.Frame(settings_frame)
+        horizontal_frame.grid(row=3, column=0, columnspan=2, sticky='ew', pady=10)
+        horizontal_frame.columnconfigure(0, weight=1)
+        horizontal_frame.columnconfigure(1, weight=1)
 
+        # === ЛЕВЫЙ БЛОК: ПОРОГИ КАЧЕСТВА ===
+        thresholds_frame = ttk.LabelFrame(horizontal_frame, text="Пороги качества соединения", padding=10)
+        thresholds_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        
         # Скорость скачивания
         ttk.Label(thresholds_frame, text="Скорость скачивания:", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=5)
-        download_spin = ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.download_threshold_var, width=6, font=self.scale_font('Arial', 10))
-        download_spin.grid(row=0, column=1, padx=5, sticky='w')
-        ttk.Label(thresholds_frame, text="% от средней (ниже = проблема)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=0, column=2, sticky='w')
-
+        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.download_threshold_var, width=6).grid(row=0, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="% от средней", font=self.scale_font('Arial', 9)).grid(row=0, column=2, sticky='w')
+        
         # Пинг
         ttk.Label(thresholds_frame, text="Пинг:", font=self.scale_font('Arial', 10)).grid(row=1, column=0, sticky='w', pady=5)
-        ping_spin = ttk.Spinbox(thresholds_frame, from_=0, to=500, textvariable=self.ping_threshold_var, width=6, font=self.scale_font('Arial', 10))
-        ping_spin.grid(row=1, column=1, padx=5, sticky='w')
-        ttk.Label(thresholds_frame, text="% от средней (выше = проблема)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=1, column=2, sticky='w')
-
+        ttk.Spinbox(thresholds_frame, from_=0, to=500, textvariable=self.ping_threshold_var, width=6).grid(row=1, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="% от средней", font=self.scale_font('Arial', 9)).grid(row=1, column=2, sticky='w')
+        
         # Джиттер (значение)
         ttk.Label(thresholds_frame, text="Джиттер:", font=self.scale_font('Arial', 10)).grid(row=2, column=0, sticky='w', pady=5)
-        jitter_spin = ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_threshold_var, width=6, font=self.scale_font('Arial', 10))
-        jitter_spin.grid(row=2, column=1, padx=5, sticky='w')
-        ttk.Label(thresholds_frame, text="мс (превышение = проблема)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=2, column=2, sticky='w')
-
+        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_threshold_var, width=6).grid(row=2, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="мс", font=self.scale_font('Arial', 9)).grid(row=2, column=2, sticky='w')
+        
         # Частота превышений джиттера
         ttk.Label(thresholds_frame, text="Частота джиттера:", font=self.scale_font('Arial', 10)).grid(row=3, column=0, sticky='w', pady=5)
-        freq_spin = ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_frequency_var, width=6, font=self.scale_font('Arial', 10))
-        freq_spin.grid(row=3, column=1, padx=5, sticky='w')
-        ttk.Label(thresholds_frame, text="% измерений (если часто > порога)", font=self.scale_font('Arial', 9), foreground='gray').grid(row=3, column=2, sticky='w')
-        # ===================================
+        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_frequency_var, width=6).grid(row=3, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="% измерений", font=self.scale_font('Arial', 9)).grid(row=3, column=2, sticky='w')
 
-        # Разделитель
-        ttk.Separator(settings_frame, orient='horizontal').grid(row=3, column=0, columnspan=3, sticky='ew', pady=15)
+        # === ПРАВЫЙ БЛОК: ОЧИСТКА ИСТОРИИ ===
+        clean_frame = ttk.LabelFrame(horizontal_frame, text="Очистка истории измерений", padding=10)
+        clean_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
         
-        # Автозапуск
-        self.auto_start_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(settings_frame, text="Автозапуск при старте Windows", 
-                       variable=self.auto_start_var).grid(row=4, column=0, columnspan=3, sticky='w', pady=5)
+        # Чекбокс + выбор периода
+        clean_row1 = ttk.Frame(clean_frame)
+        clean_row1.pack(fill='x', pady=2)
         
-        # Минимализация в трей
-        self.minimize_to_tray_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(settings_frame, text="Сворачивать в системный трей", 
-                       variable=self.minimize_to_tray_var).grid(row=5, column=0, columnspan=3, sticky='w', pady=5)
+        self.clean_enabled_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(clean_row1, text="Авто-очистка старше", 
+                       variable=self.clean_enabled_var).pack(side='left')
         
-        # Разделитель
-        ttk.Separator(settings_frame, orient='horizontal').grid(row=6, column=0, columnspan=3, sticky='ew', pady=15)
+        self.auto_clean_days_var = tk.IntVar(value=90)
+        ttk.Spinbox(clean_row1, from_=30, to=365, increment=30, 
+                   textvariable=self.auto_clean_days_var, width=6).pack(side='left', padx=5)
+        ttk.Label(clean_row1, text="дней").pack(side='left')
         
-        # Кнопка сохранения настроек
-        save_button = ttk.Button(settings_frame, text="Сохранить настройки", command=self.save_settings)
-        save_button.grid(row=7, column=0, pady=10, sticky='w')
+        # Пояснение
+        ttk.Label(clean_frame, text="(0 = не удалять)", font=('Arial', 8), 
+                 foreground='gray').pack(anchor='w', pady=2)
         
-        # Информация о программе
-        info_frame = ttk.LabelFrame(self.settings_frame, text="Информация", padding=20)
-        info_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
+        # Кнопка ручной очистки
+        ttk.Button(clean_frame, text="🗑️ Очистить сейчас", 
+                  command=self.manual_clean_old).pack(anchor='w', pady=5)
+
+        # === НИЖНИЙ БЛОК: ИНФОРМАЦИЯ О ПРОГРАММЕ ===
+        info_frame = ttk.LabelFrame(settings_frame, text="Информация", padding=10)
+        info_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=15)
         
-        # Название программы с версией
         version_text = f"SpeedWatch v{__version__}"
-        ttk.Label(info_frame, text=version_text, font=self.scale_font('Arial', 14) + ('bold',)).pack(pady=(0, 5))
-        
-        # Описание
+        ttk.Label(info_frame, text=version_text, font=self.scale_font('Arial', 12) + ('bold',)).pack()
         ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения", 
-                 font=self.scale_font('Arial', 10)).pack(pady=(0, 5))
-        
-        # Год
-        current_year = datetime.now().year
-        ttk.Label(info_frame, text=f"© {current_year}", 
                  font=self.scale_font('Arial', 9)).pack()
+        ttk.Label(info_frame, text=f"© {datetime.now().year}", 
+                 font=self.scale_font('Arial', 8)).pack()
 
 
     def create_tray_icon(self):
@@ -1901,6 +1973,17 @@ class InternetSpeedMonitor:
                 self.jitter_frequency_var.set(int(result[0]))
             # ===================
 
+            # === НАСТРОЙКИ ОЧИСТКИ ===
+            cursor.execute("SELECT value FROM settings WHERE key='clean_enabled'")
+            result = cursor.fetchone()
+            if result:
+                self.clean_enabled_var.set(result[0] == '1')
+            
+            cursor.execute("SELECT value FROM settings WHERE key='clean_days'")
+            result = cursor.fetchone()
+            if result:
+                self.auto_clean_days_var.set(int(result[0]))
+
             cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
             result = cursor.fetchone()
             if result:
@@ -1942,6 +2025,12 @@ class InternetSpeedMonitor:
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('jitter_frequency', str(self.jitter_frequency_var.get())))
             # ===================
+
+            # === НАСТРОЙКИ ОЧИСТКИ ===
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('clean_enabled', '1' if self.clean_enabled_var.get() else '0'))
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('clean_days', str(self.auto_clean_days_var.get())))
 
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('auto_start', '1' if self.auto_start_var.get() else '0'))
