@@ -2012,8 +2012,18 @@ class InternetSpeedMonitor:
         period = self.stats_period_var.get()
         
         if period == "День" and stats['hourly']:
-            # Для дня показываем проблемные часы
-            ttk.Label(self.problems_frame, text="🕐 Пиковые нагрузки:", 
+            # Получаем день недели для выбранной даты
+            day_names = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА', 'ВОСКРЕСЕНЬЕ']
+            
+            # Получаем выбранную дату из календаря
+            if hasattr(self, 'stats_date_picker'):
+                selected_date = self.stats_date_picker.get_date()
+                day_of_week = selected_date.weekday()  # понедельник = 0
+                day_name = day_names[day_of_week]
+            else:
+                day_name = ""
+            
+            ttk.Label(self.problems_frame, text=f"🕐 Пиковые нагрузки: {day_name}", 
                      font=('Arial', 9, 'bold')).pack(anchor='w', pady=1)
             
             # Сортируем по скорости (самые плохие часы)
