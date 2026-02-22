@@ -260,6 +260,15 @@ class InternetSpeedMonitor:
         self.jitter_frequency_var = tk.IntVar(value=30)    # % частоты превышений
         # ===========================
 
+        # === ПЕРЕМЕННЫЕ ДЛЯ СТАТИСТИКИ ===
+        self.stats_period_var = tk.StringVar(value="Месяц")
+        self.stats_date_var = tk.StringVar()
+        self.stats_week_var = tk.StringVar()
+        self.stats_month_var = tk.StringVar()
+        self.stats_quarter_var = tk.StringVar()
+        self.stats_year_var = tk.StringVar(value=str(datetime.now().year))
+        # =================================
+
         # === ОЧИСТКА ИСТОРИИ ===
         self.clean_enabled_var = tk.BooleanVar(value=True)
         self.auto_clean_days_var = tk.IntVar(value=90)  # 90 дней по умолчанию
@@ -1434,11 +1443,18 @@ class InternetSpeedMonitor:
         # Вкладка журнала
         self.log_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.log_frame, text='Журнал')
-        
+
+        # === НОВАЯ ВКЛАДКА ===
+        self.stats_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.stats_frame, text='Статистика')
+
         # Вкладка настроек
         self.settings_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text='Настройки')
-        
+
+         # === НОВАЯ ВКЛАДКА СТАТИСТИКИ ===
+        self.stats_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.stats_frame, text='Статистика')      
       
         # Заполняем вкладку мониторинга
         self.setup_monitor_tab()
@@ -1451,6 +1467,9 @@ class InternetSpeedMonitor:
         
         # Заполняем вкладку настроек
         self.setup_settings_tab()
+
+        # === ВАЖНО: Заполняем вкладку статистики ===
+        self.setup_stats_tab()
 
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
@@ -1710,6 +1729,252 @@ class InternetSpeedMonitor:
         # Загружаем данные
         self.update_log()
 
+    def setup_stats_tab(self):
+        """Настройка вкладки статистики"""
+        # Панель выбора периода
+        period_frame = ttk.Frame(self.stats_frame)
+        period_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
+        
+        ttk.Label(period_frame, text="Период:", font=self.scale_font('Arial', 10)).pack(side='left')
+        
+        # Переменные для периода
+        self.stats_period_var = tk.StringVar(value="Месяц")
+        self.stats_date_var = tk.StringVar()
+        self.stats_week_var = tk.StringVar()
+        self.stats_month_var = tk.StringVar()
+        self.stats_quarter_var = tk.StringVar()
+        self.stats_year_var = tk.StringVar(value=str(datetime.now().year))
+        
+        # Радиокнопки выбора периода
+        periods_frame = ttk.Frame(period_frame)
+        periods_frame.pack(side='left', padx=10)
+        
+        ttk.Radiobutton(periods_frame, text="День", variable=self.stats_period_var, 
+                       value="День", command=self.update_stats_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(periods_frame, text="Неделя", variable=self.stats_period_var, 
+                       value="Неделя", command=self.update_stats_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(periods_frame, text="Месяц", variable=self.stats_period_var, 
+                       value="Месяц", command=self.update_stats_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(periods_frame, text="Квартал", variable=self.stats_period_var, 
+                       value="Квартал", command=self.update_stats_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(periods_frame, text="Год", variable=self.stats_period_var, 
+                       value="Год", command=self.update_stats_period_ui).pack(side='left', padx=2)
+        
+        # Контейнер для элементов выбора (будет обновляться динамически)
+        self.stats_selector_frame = ttk.Frame(period_frame)
+        self.stats_selector_frame.pack(side='left', padx=10)
+        
+        # Кнопка обновления
+        ttk.Button(period_frame, text="🔄 Обновить", command=self.update_stats).pack(side='left', padx=5)
+        
+        # === ГОРИЗОНТАЛЬНЫЙ КОНТЕЙНЕР ДЛЯ 4 БЛОКОВ (2 ряда по 2) ===
+        stats_container = ttk.Frame(self.stats_frame)
+        stats_container.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(5))
+        
+        # Верхний ряд
+        top_row = ttk.Frame(stats_container)
+        top_row.pack(fill='both', expand=True, pady=2)
+        top_row.columnconfigure(0, weight=1)
+        top_row.columnconfigure(1, weight=1)
+        
+        # Блок 1: Соответствие тарифу
+        self.tariff_frame = ttk.LabelFrame(top_row, text="Соответствие тарифу", padding=8)
+        self.tariff_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        
+        # Блок 2: Стабильность
+        self.stability_frame = ttk.LabelFrame(top_row, text="Стабильность", padding=8)
+        self.stability_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        
+        # Нижний ряд
+        bottom_row = ttk.Frame(stats_container)
+        bottom_row.pack(fill='both', expand=True, pady=2)
+        bottom_row.columnconfigure(0, weight=1)
+        bottom_row.columnconfigure(1, weight=1)
+        
+        # Блок 3: Проблемные периоды
+        self.problems_frame = ttk.LabelFrame(bottom_row, text="Проблемные периоды", padding=8)
+        self.problems_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        
+        # Блок 4: Общая статистика
+        self.total_stats_frame = ttk.LabelFrame(bottom_row, text="Общая статистика", padding=8)
+        self.total_stats_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        
+        # Кнопки экспорта внизу
+        export_frame = ttk.Frame(self.stats_frame)
+        export_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
+        
+        ttk.Button(export_frame, text="🧾 Экспорт отчета", command=self.export_stats_report).pack(side='left', padx=5)
+        ttk.Button(export_frame, text="📋 Копировать в буфер", command=self.copy_stats_to_clipboard).pack(side='left', padx=5)
+        
+        # === ЗАПОЛНЕНИЕ БЛОКОВ ДАННЫМИ (ВРЕМЕННО) ===
+        self.update_stats_display()
+        
+        # Инициализация UI для выбранного периода
+        self.update_stats_period_ui()
+
+    def update_stats_period_ui(self):
+        """Обновление UI выбора периода в зависимости от выбранного типа"""
+        # Очищаем контейнер
+        for widget in self.stats_selector_frame.winfo_children():
+            widget.destroy()
+        
+        period = self.stats_period_var.get()
+        
+        if period == "День":
+            # Календарь для выбора даты
+            from tkcalendar import DateEntry
+            self.stats_date_picker = DateEntry(self.stats_selector_frame, width=10, 
+                                               background='darkblue', foreground='white',
+                                               date_pattern='dd.mm.yyyy', locale='ru_RU')
+            self.stats_date_picker.pack(side='left')
+            
+        elif period == "Неделя":
+            # Выбор недели и года
+            ttk.Label(self.stats_selector_frame, text="Неделя:").pack(side='left')
+            self.stats_week_combo = ttk.Combobox(self.stats_selector_frame, 
+                                                 values=[str(i) for i in range(1, 53)],  # ТОЛЬКО ЦИФРЫ
+                                                 width=4, state='readonly')  # ширина 4 знака
+            self.stats_week_combo.pack(side='left', padx=5)
+            self.stats_week_combo.set("1")
+            
+            ttk.Label(self.stats_selector_frame, text="Год:").pack(side='left')
+            self.stats_week_year_combo = ttk.Combobox(self.stats_selector_frame,
+                                                      values=[str(y) for y in range(2026, datetime.now().year+1)],
+                                                      width=6, state='readonly')
+            self.stats_week_year_combo.pack(side='left', padx=5)
+            self.stats_week_year_combo.set(str(datetime.now().year))
+            
+        elif period == "Месяц":
+            # Выбор месяца и года
+            months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                     'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+            ttk.Label(self.stats_selector_frame, text="Месяц:").pack(side='left')
+            self.stats_month_combo = ttk.Combobox(self.stats_selector_frame, values=months,
+                                                  width=9, state='readonly')
+            self.stats_month_combo.pack(side='left', padx=5)
+            self.stats_month_combo.set(months[datetime.now().month-1])
+            
+            ttk.Label(self.stats_selector_frame, text="Год:").pack(side='left')
+            self.stats_month_year_combo = ttk.Combobox(self.stats_selector_frame,
+                                                       values=[str(y) for y in range(2026, datetime.now().year+1)],
+                                                       width=4, state='readonly')
+            self.stats_month_year_combo.pack(side='left', padx=5)
+            self.stats_month_year_combo.set(str(datetime.now().year))
+            
+        elif period == "Квартал":
+            # Выбор квартала и года
+            quarters = ['I', 'II', 'III', 'IV']  # ТОЛЬКО РИМСКИЕ ЦИФРЫ
+            ttk.Label(self.stats_selector_frame, text="Квартал:").pack(side='left')
+            self.stats_quarter_combo = ttk.Combobox(self.stats_selector_frame, values=quarters,
+                                                    width=4, state='readonly')
+            self.stats_quarter_combo.pack(side='left', padx=5)
+            self.stats_quarter_combo.set(quarters[0])
+            
+            ttk.Label(self.stats_selector_frame, text="Год:").pack(side='left')
+            self.stats_quarter_year_combo = ttk.Combobox(self.stats_selector_frame,
+                                                         values=[str(y) for y in range(2026, datetime.now().year+1)],
+                                                         width=6, state='readonly')
+            self.stats_quarter_year_combo.pack(side='left', padx=5)
+            self.stats_quarter_year_combo.set(str(datetime.now().year))
+            
+        elif period == "Год":
+            # Выбор года
+            ttk.Label(self.stats_selector_frame, text="Год:").pack(side='left')
+            self.stats_year_combo = ttk.Combobox(self.stats_selector_frame,
+                                                 values=[str(y) for y in range(2026, datetime.now().year+1)],
+                                                 width=6, state='readonly')
+            self.stats_year_combo.pack(side='left', padx=5)
+            self.stats_year_combo.set(str(datetime.now().year))
+
+    def update_stats_display(self):
+        """Обновление отображения статистики в блоках"""
+        try:
+            # Очищаем старые данные
+            for widget in self.tariff_frame.winfo_children():
+                widget.destroy()
+            for widget in self.stability_frame.winfo_children():
+                widget.destroy()
+            for widget in self.problems_frame.winfo_children():
+                widget.destroy()
+            for widget in self.total_stats_frame.winfo_children():
+                widget.destroy()
+            
+            # === БЛОК 1: Соответствие тарифу ===
+            planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 100
+            ttk.Label(self.tariff_frame, text=f"(заявлено {planned} Mbps)", 
+                     font=('Arial', 8)).pack(anchor='w')
+            
+            # Заглушка данных
+            stats = self.get_stats_for_period()
+            
+            if stats:
+                # Реальные данные
+                self._fill_tariff_block(stats)
+                self._fill_stability_block(stats)
+                self._fill_problems_block(stats)
+                self._fill_total_stats_block(stats)
+            else:
+                # Заглушка "нет данных"
+                self._fill_placeholder_blocks()
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка обновления статистики: {e}")
+            self._fill_placeholder_blocks()
+
+    def _fill_placeholder_blocks(self):
+        """Заполнение блоков заглушками (нет данных)"""
+        # Блок 1: Соответствие тарифу
+        ttk.Label(self.tariff_frame, text="📥 Загрузка: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.tariff_frame, text="📤 Отдача: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.tariff_frame, text="⏱️ Ниже тарифа: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Блок 2: Стабильность
+        ttk.Label(self.stability_frame, text="📶 Пинг: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.stability_frame, text="📊 Джиттер: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.stability_frame, text="❌ Потеря пакетов: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.stability_frame, text="🌡️ Колебания: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Блок 3: Проблемные периоды
+        ttk.Label(self.problems_frame, text="🕐 Худшее время: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.problems_frame, text="📉 Худший день: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        # Блок 4: Общая статистика
+        ttk.Label(self.total_stats_frame, text="📊 Всего измерений: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.total_stats_frame, text="🏆 Лучшая скорость: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        ttk.Label(self.total_stats_frame, text="🐢 Худшая скорость: —", 
+                 font=('Arial', 9)).pack(anchor='w', pady=1)
+
+    def get_stats_for_period(self):
+        """Получение статистики за выбранный период (временная заглушка)"""
+        # TODO: Реализовать реальное получение данных из БД
+        # Сейчас возвращаем None для отображения заглушки
+        return None
+
+    def update_stats(self):
+        """Обновление статистики на основе выбранного периода"""
+        self.logger.info("Обновление статистики...")
+        self.update_stats_display()
+
+    def export_stats_report(self):
+        """Экспорт статистики в текстовый файл"""
+        # TODO: Реализовать экспорт
+        messagebox.showinfo("Экспорт", "Функция будет доступна в следующей версии")
+        
+    def copy_stats_to_clipboard(self):
+        """Копирование статистики в буфер обмена"""
+        # TODO: Реализовать копирование
+        messagebox.showinfo("Копирование", "Функция будет доступна в следующей версии")
 
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
