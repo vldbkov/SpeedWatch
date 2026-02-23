@@ -2224,9 +2224,14 @@ class InternetSpeedMonitor:
 
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
+
         # Основной фрейм с настройками
         settings_frame = ttk.LabelFrame(self.settings_frame, text="Настройки мониторинга", padding=20)
         settings_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
+        
+        # === ВАЖНО: настраиваем растяжение колонки ===
+        settings_frame.columnconfigure(0, weight=1)  # колонка 0 будет растягиваться
+        # ===========================================
         
         # === ВЕРХНЯЯ СТРОКА: Интервал + Автозапуск ===
         top_frame = ttk.Frame(settings_frame)
@@ -2234,7 +2239,7 @@ class InternetSpeedMonitor:
         top_frame.columnconfigure(1, weight=1)
         
         # Интервал проверки (слева)
-        ttk.Label(top_frame, text="Интервал проверки (мин):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
+        ttk.Label(top_frame, text="Интервал проверки (мин):     ", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
         self.interval_var = tk.IntVar(value=60)
         ttk.Spinbox(top_frame, from_=1, to=1440, textvariable=self.interval_var, width=8, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=5, sticky='w')
         
@@ -2250,14 +2255,22 @@ class InternetSpeedMonitor:
         
         # Заявленная скорость (слева)
         ttk.Label(middle_frame, text="Заявленная скорость (Mbps):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
+        
+        # Фрейм для спинбокса и пояснения
+        speed_frame = ttk.Frame(middle_frame)
+        speed_frame.grid(row=0, column=1, padx=5, sticky='w')
+        
         self.planned_speed_var = tk.IntVar(value=100)
-        ttk.Spinbox(middle_frame, from_=0, to=10000, textvariable=self.planned_speed_var, width=8, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=5, sticky='w')
-        ttk.Label(middle_frame, text="(0=не учитывать)", font=self.scale_font('Arial', 8), foreground='gray').grid(row=0, column=2, sticky='w')
+        ttk.Spinbox(speed_frame, from_=0, to=10000, textvariable=self.planned_speed_var, 
+                   width=8, font=self.scale_font('Arial', 10)).pack(side='left')
+        
+        ttk.Label(speed_frame, text="(0=не учитывать)", font=self.scale_font('Arial', 8), 
+                 foreground='gray').pack(side='left', padx=5)
         
         # Сворачивание в трей (справа)
         self.minimize_to_tray_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(middle_frame, text="Сворачивать в трей", 
-                       variable=self.minimize_to_tray_var).grid(row=0, column=3, padx=(20,0), sticky='w')
+                       variable=self.minimize_to_tray_var).grid(row=0, column=2, padx=(20,0), sticky='w')
         
         # === ТРЕТЬЯ СТРОКА: Кнопка сохранения ===
         save_frame = ttk.Frame(settings_frame)
@@ -2268,13 +2281,16 @@ class InternetSpeedMonitor:
 
         # === ГОРИЗОНТАЛЬНЫЙ КОНТЕЙНЕР ДЛЯ ДВУХ БЛОКОВ ===
         horizontal_frame = ttk.Frame(settings_frame)
-        horizontal_frame.grid(row=3, column=0, columnspan=2, sticky='ew', pady=10)
-        horizontal_frame.columnconfigure(0, weight=1)
-        horizontal_frame.columnconfigure(1, weight=1)
+        horizontal_frame.grid(row=3, column=0, columnspan=1, sticky='ew', pady=10)
+        horizontal_frame.columnconfigure(0, weight=1, uniform='group1')
+        horizontal_frame.columnconfigure(1, weight=1, uniform='group1')
 
         # === ЛЕВЫЙ БЛОК: ПОРОГИ КАЧЕСТВА ===
         thresholds_frame = ttk.LabelFrame(horizontal_frame, text="Пороги качества соединения", padding=10)
         thresholds_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        
+        # Настройка растяжения внутри левого блока
+        thresholds_frame.columnconfigure(1, weight=1)
         
         # Скорость скачивания
         ttk.Label(thresholds_frame, text="Скорость скачивания:", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=5)
@@ -2323,7 +2339,7 @@ class InternetSpeedMonitor:
 
         # === НИЖНИЙ БЛОК: ИНФОРМАЦИЯ О ПРОГРАММЕ ===
         info_frame = ttk.LabelFrame(settings_frame, text="Информация", padding=10)
-        info_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=15)
+        info_frame.grid(row=4, column=0, columnspan=1, sticky='ew', pady=15)
         
         version_text = f"SpeedWatch v{__version__}"
         ttk.Label(info_frame, text=version_text, font=self.scale_font('Arial', 12) + ('bold',)).pack()
