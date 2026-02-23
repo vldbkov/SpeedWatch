@@ -269,6 +269,13 @@ class InternetSpeedMonitor:
         self.stats_year_var = tk.StringVar(value=str(datetime.now().year))
         # =================================
 
+        # === ПЕРЕМЕННЫЕ ДЛЯ ГРАФИКОВ ===
+        self.graph_period_var = tk.StringVar(value="День")
+        self.graph_date_var = tk.StringVar()
+        self.graph_week_var = tk.StringVar()
+        self.graph_month_var = tk.StringVar()
+        self.graph_year_var = tk.StringVar(value=str(datetime.now().year))
+
         # === ОЧИСТКА ИСТОРИИ ===
         self.clean_enabled_var = tk.BooleanVar(value=True)
         self.auto_clean_days_var = tk.IntVar(value=90)  # 90 дней по умолчанию
@@ -279,11 +286,8 @@ class InternetSpeedMonitor:
         # Устанавливаем начальные даты в фильтре журнала
         first_date = self.get_first_measurement_date()
         self.date_from_entry.set_date(first_date)
-        self.date_to_entry.set_date(datetime.now().date())
-        
-        # Устанавливаем период "Все время" на вкладке графиков
-        self.period_var.set("Все время")
-        
+        self.date_to_entry.set_date(datetime.now().date())        
+       
         # Устанавливаем начальный статус
         self.status_var.set("Ожидание команды")
         
@@ -1550,19 +1554,32 @@ class InternetSpeedMonitor:
         control_frame = ttk.Frame(self.graph_frame)
         control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
-        # Выбор периода
-        ttk.Label(control_frame, text="Период:").pack(side='left')
+        ttk.Label(control_frame, text="Период:", font=self.scale_font('Arial', 10)).pack(side='left')
         
-        self.period_var = tk.StringVar(value="1 день")
-        periods = ["1 день", "7 дней", "30 дней", "Все время"]
-        self.period_combo = ttk.Combobox(control_frame, textvariable=self.period_var, values=periods, state='readonly', width=10)
-        self.period_combo.pack(side='left', padx=5)
+        # Радиокнопки выбора периода
+        period_frame = ttk.Frame(control_frame)
+        period_frame.pack(side='left', padx=10)
+        
+        ttk.Radiobutton(period_frame, text="День", variable=self.graph_period_var, 
+                       value="День", command=self.update_graph_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(period_frame, text="Неделя", variable=self.graph_period_var, 
+                       value="Неделя", command=self.update_graph_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(period_frame, text="Месяц", variable=self.graph_period_var, 
+                       value="Месяц", command=self.update_graph_period_ui).pack(side='left', padx=2)
+        ttk.Radiobutton(period_frame, text="Все время", variable=self.graph_period_var, 
+                       value="Все время", command=self.update_graph_period_ui).pack(side='left', padx=2)
+        
+        # Контейнер для элементов выбора
+        self.graph_selector_frame = ttk.Frame(control_frame)
+        self.graph_selector_frame.pack(side='left', padx=10)
         
         # Кнопка обновления
-        ttk.Button(control_frame, text="Обновить график", command=self.update_graph).pack(side='left', padx=self.scale_value(10))
+        ttk.Button(control_frame, text="Обновить\n  график", command=self.update_graph, 
+                  width=8).pack(side='left', padx=5)
         
         # Кнопка экспорта
-        ttk.Button(control_frame, text="Экспорт PNG", command=self.export_graph).pack(side='left')
+        ttk.Button(control_frame, text="Экспорт\n  PNG", command=self.export_graph, 
+                  width=8).pack(side='left', padx=5)
         
         # Область для графиков
         self.graph_canvas_frame = ttk.Frame(self.graph_frame)
@@ -1572,7 +1589,61 @@ class InternetSpeedMonitor:
         self.fig = Figure(figsize=(10, 6), dpi=100)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.graph_canvas_frame)
         self.canvas.get_tk_widget().pack(fill='both', expand=True)
+        
+        # Инициализация UI
+        self.update_graph_period_ui()
 
+    def update_graph_period_ui(self):
+        """Обновление UI выбора периода для графиков"""
+        # Очищаем контейнер
+        for widget in self.graph_selector_frame.winfo_children():
+            widget.destroy()
+        
+        period = self.graph_period_var.get()
+        
+        if period == "День":
+            # Календарь для выбора даты
+            from tkcalendar import DateEntry
+            self.graph_date_picker = DateEntry(self.graph_selector_frame, width=10, 
+                                               background='darkblue', foreground='white',
+                                               date_pattern='dd.mm.yyyy', locale='ru_RU')
+            self.graph_date_picker.pack(side='left')
+            
+        elif period == "Неделя":
+            # Выбор недели и года
+            ttk.Label(self.graph_selector_frame, text="Неделя:").pack(side='left')
+            current_week = datetime.now().isocalendar()[1]
+            week_values = [str(i) for i in range(1, 53)]
+            
+            self.graph_week_combo = ttk.Combobox(self.graph_selector_frame, 
+                                                 values=week_values,
+                                                 width=2, state='readonly')
+            self.graph_week_combo.pack(side='left', padx=5)
+            self.graph_week_combo.set(str(current_week))
+            
+            ttk.Label(self.graph_selector_frame, text="Год:").pack(side='left')
+            self.graph_year_combo = ttk.Combobox(self.graph_selector_frame,
+                                                 values=[str(y) for y in range(2026, datetime.now().year+1)],
+                                                 width=4, state='readonly')
+            self.graph_year_combo.pack(side='left', padx=5)
+            self.graph_year_combo.set(str(datetime.now().year))
+            
+        elif period == "Месяц":
+            # Выбор месяца и года (цифрами)
+            months = [str(i) for i in range(1, 13)]  # ['1', '2', '3', ... '12']
+            
+            ttk.Label(self.graph_selector_frame, text="Месяц:").pack(side='left')
+            self.graph_month_combo = ttk.Combobox(self.graph_selector_frame, values=months,
+                                                  width=2, state='readonly')  # ширина 2 символа
+            self.graph_month_combo.pack(side='left', padx=5)
+            self.graph_month_combo.set(str(datetime.now().month))  # текущий месяц цифрой
+            
+            ttk.Label(self.graph_selector_frame, text="Год:").pack(side='left')
+            self.graph_month_year_combo = ttk.Combobox(self.graph_selector_frame,
+                                                       values=[str(y) for y in range(2026, datetime.now().year+1)],
+                                                       width=4, state='readonly')
+            self.graph_month_year_combo.pack(side='left', padx=5)
+            self.graph_month_year_combo.set(str(datetime.now().year))
 
     def setup_log_tab(self):
         """Настройка вкладки журнала"""
@@ -3409,24 +3480,48 @@ class InternetSpeedMonitor:
             cursor = conn.cursor()
             
             # Определяем период
-            period = self.period_var.get()
-            if period == "1 день":
-                days = 1
-            elif period == "7 дней":
-                days = 7
-            elif period == "30 дней":
-                days = 30
-            else:
-                days = 36500  # Все время (100 лет)
+            period = self.graph_period_var.get()
             
-            cutoff_date = datetime.now() - timedelta(days=days)
+            if period == "День":
+                # Выбранная дата
+                if hasattr(self, 'graph_date_picker'):
+                    selected_date = self.graph_date_picker.get_date()
+                    start_date = datetime(selected_date.year, selected_date.month, selected_date.day, 0, 0, 0)
+                    end_date = datetime(selected_date.year, selected_date.month, selected_date.day, 23, 59, 59)
+                else:
+                    start_date = datetime.now() - timedelta(days=1)
+                    end_date = datetime.now()
+                    
+            elif period == "Неделя":
+                # Выбранная неделя
+                week = int(self.graph_week_combo.get())
+                year = int(self.graph_year_combo.get())
+                first_day = datetime(year, 1, 1)
+                start_date = first_day + timedelta(weeks=week-1)
+                end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+                
+            elif period == "Месяц":
+                # Выбранный месяц (цифрой)
+                month = int(self.graph_month_combo.get())
+                year = int(self.graph_month_year_combo.get())
+                start_date = datetime(year, month, 1)
+                if month == 12:
+                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                else:
+                    end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
+                    
+            else:  # Все время
+                start_date = datetime.now() - timedelta(days=36500)  # 100 лет
+                end_date = datetime.now()
             
+            # Формируем запрос к БД
             cursor.execute('''
                 SELECT timestamp, download_speed, upload_speed, ping, jitter 
                 FROM speed_measurements 
-                WHERE timestamp >= ? 
+                WHERE timestamp BETWEEN ? AND ?
                 ORDER BY timestamp
-            ''', (cutoff_date,))
+            ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                  end_date.strftime('%Y-%m-%d %H:%M:%S')))
             
             data = cursor.fetchall()
             conn.close()
@@ -3512,8 +3607,6 @@ class InternetSpeedMonitor:
 
             # Добавляем средние значения как пунктирные линии (без текста в легенде)
             if download_valid or upload_valid:
-                time_range = [min(list(download_ts) + list(upload_ts)), 
-                             max(list(download_ts) + list(upload_ts))]
                 if avg_download > 0:
                     ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6)
                 if avg_upload > 0:
@@ -3533,14 +3626,19 @@ class InternetSpeedMonitor:
             # Форматируем ось X в зависимости от выбранного периода
             import matplotlib.dates as mdates
             
-            if period == "1 день":
+            if period == "День":
                 # Для 1 дня показываем только время
                 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                # Поворачиваем подписи для лучшей читаемости
+                ax1.xaxis.set_major_locator(mdates.HourLocator(interval=2))
                 ax1.tick_params(axis='x', rotation=45)
             else:
                 # Для остальных периодов показываем дату
                 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
+                if period == "Неделя":
+                    ax1.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+                elif period == "Месяц":
+                    ax1.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+                ax1.tick_params(axis='x', rotation=45)
             
             # График пинга и джиттера
             if ping_vals:
@@ -3555,7 +3653,7 @@ class InternetSpeedMonitor:
                 if avg_jitter >= 0:
                     ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6)
 
-            # Добавляем пороговые линии (60 мс для ping, 15 мс для jitter)
+            # Добавляем пороговые линии
             ax2.axhline(y=60, color='purple', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог пинга (60 мс)')
             ax2.axhline(y=15, color='orange', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог джиттера (15 мс)')
 
@@ -3566,11 +3664,18 @@ class InternetSpeedMonitor:
             ax2.grid(True, alpha=0.3)
             ax2.tick_params(axis='both', labelsize=label_fontsize)
             
-            if period == "1 день":
+            # Форматируем ось X для второго графика
+            if period == "День":
                 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2))
                 ax2.tick_params(axis='x', rotation=45)
             else:
                 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
+                if period == "Неделя":
+                    ax2.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+                elif period == "Месяц":
+                    ax2.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+                ax2.tick_params(axis='x', rotation=45)
             
             # Автоматическое форматирование дат
             self.fig.autofmt_xdate()
