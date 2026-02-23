@@ -1848,7 +1848,7 @@ class InternetSpeedMonitor:
             ttk.Label(self.stats_selector_frame, text="Год:").pack(side='left')
             self.stats_week_year_combo = ttk.Combobox(self.stats_selector_frame,
                                                       values=[str(y) for y in range(2026, datetime.now().year+1)],
-                                                      width=3, state='readonly')
+                                                      width=4, state='readonly')
             self.stats_week_year_combo.pack(side='left', padx=5)
             self.stats_week_year_combo.set(str(datetime.now().year))
             
