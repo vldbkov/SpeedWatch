@@ -997,6 +997,17 @@ class InternetSpeedMonitor:
                         "📈 Норма: до 15 мс.\n"
                         "⚠️ Выше 15 мс - возможны проблемы\n"
                         "   в онлайн-играх и видео-звонках."
+            },
+            "jitter_frequency": {  
+                "title": "Что такое частота джиттера?",
+                "text": "Частота джиттера показывает, как часто\n"
+                        "джиттер превышает допустимый порог (15 мс).\n\n"
+                        "📊 Измеряется в процентах (%)\n\n"
+                        "✅ Менее 10% - редкие скачки, нормально\n"
+                        "⚠️ 10-30% - периодическая нестабильность\n"
+                        "❌ Более 30% - системная проблема соединения\n\n"
+                        "Например: если из 100 измерений джиттер был\n"
+                        "высоким в 25 случаях - частота составит 25%."
             }
         }
         
@@ -2451,7 +2462,16 @@ class InternetSpeedMonitor:
         ttk.Label(thresholds_frame, text="мс", font=self.scale_font('Arial', 9)).grid(row=2, column=2, sticky='w')
         
         # Частота превышений джиттера
-        ttk.Label(thresholds_frame, text="Частота джиттера:", font=self.scale_font('Arial', 10)).grid(row=3, column=0, sticky='w', pady=5)
+        jitter_freq_frame = ttk.Frame(thresholds_frame)
+        jitter_freq_frame.grid(row=3, column=0, sticky='w', pady=5)
+        
+        ttk.Label(jitter_freq_frame, text="Частота джиттера:", font=self.scale_font('Arial', 10)).pack(side='left')
+        
+        # Знак вопроса для частоты джиттера
+        jitter_freq_question = tk.Label(jitter_freq_frame, text="❓", font=('Arial', 10, 'bold'), fg="blue", cursor="hand2")
+        jitter_freq_question.pack(side='left', padx=(2, 0))
+        jitter_freq_question.bind("<Button-1>", lambda e: self.show_term_explanation("jitter_frequency"))
+        
         ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_frequency_var, width=6).grid(row=3, column=1, padx=5)
         ttk.Label(thresholds_frame, text="% измерений", font=self.scale_font('Arial', 9)).grid(row=3, column=2, sticky='w')
 
