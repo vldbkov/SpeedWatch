@@ -975,6 +975,61 @@ class InternetSpeedMonitor:
         ))
 # endregion
 
+    def show_term_explanation(self, term):
+        """Показать окно с объяснением термина"""
+        explanations = {
+            "ping": {
+                "title": "Что такое пинг?",
+                "text": "Пинг (латентность) - это время,\n"
+                        "за которое сигнал доходит от вашего компьютера\n"
+                        "до сервера и возвращается обратно.\n\n"
+                        "📊 Измеряется в миллисекундах (мс).\n"
+                        "✅ Чем меньше, тем лучше.\n"
+                        "📈 Норма: до 50 мс для проводного интернета.\n"
+                        "⚠️ Выше 100 мс - заметные задержки в играх."
+            },
+            "jitter": {
+                "title": "Что такое джиттер?",
+                "text": "Джиттер - это вариация задержки пакетов.\n"
+                        "Показывает, насколько стабильно ваше соединение.\n\n"
+                        "📊 Измеряется в миллисекундах (мс).\n"
+                        "✅ Чем ниже, тем стабильнее связь.\n"
+                        "📈 Норма: до 15 мс.\n"
+                        "⚠️ Выше 15 мс - возможны проблемы\n"
+                        "   в онлайн-играх и видео-звонках."
+            }
+        }
+        
+        info = explanations.get(term)
+        if not info:
+            return
+            
+        # Создаем окно
+        explanation_window = tk.Toplevel(self.root)
+        explanation_window.title(info["title"])
+        explanation_window.geometry("350x250")
+        explanation_window.resizable(False, False)
+        
+        # Центрируем
+        explanation_window.transient(self.root)
+        explanation_window.grab_set()
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() - 350) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 250) // 2
+        explanation_window.geometry(f"+{x}+{y}")
+        
+        # Содержимое
+        frame = ttk.Frame(explanation_window, padding="15")
+        frame.pack(fill='both', expand=True)
+        
+        label = ttk.Label(frame, text=info["text"], 
+                         font=('Arial', 10), justify='left')
+        label.pack(pady=10)
+        
+        # Кнопка "Понятно"
+        ttk.Button(frame, text="Понятно", 
+                  command=explanation_window.destroy).pack(pady=10)
+
     def show_about_window(self):
         """Показать окно 'О программе'"""
         try:
@@ -1492,12 +1547,29 @@ class InternetSpeedMonitor:
         self.upload_label.grid(row=1, column=1, padx=10, sticky='w')
         
         # Пинг
-        ttk.Label(current_frame, text="Пинг:", font=self.scale_font('Arial', 12)).grid(row=2, column=0, sticky='w', pady=5)
+        ping_frame = ttk.Frame(current_frame)
+        ping_frame.grid(row=2, column=0, sticky='w', pady=5)
+        
+        ttk.Label(ping_frame, text="Пинг:", font=self.scale_font('Arial', 12)).pack(side='left')
+        
+        # Знак вопроса для пинга
+        ping_question = tk.Label(ping_frame, text="❓", font=('Arial', 10, 'bold'), fg="blue", cursor="hand2")
+        ping_question.pack(side='left', padx=(2, 0))
+        ping_question.bind("<Button-1>", lambda e: self.show_term_explanation("ping"))
+        
         self.ping_label = ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.ping_label.grid(row=2, column=1, padx=10, sticky='w')
         
         # Jitter
-        ttk.Label(current_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).grid(row=3, column=0, sticky='w', pady=5)
+        jitter_frame = ttk.Frame(current_frame)
+        jitter_frame.grid(row=3, column=0, sticky='w', pady=5)       
+        ttk.Label(jitter_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).pack(side='left')
+        
+        # Знак вопроса для джиттера
+        jitter_question = tk.Label(jitter_frame, text="❓", font=('Arial', 10, 'bold'), fg="blue", cursor="hand2")
+        jitter_question.pack(side='left', padx=(2, 0))
+        jitter_question.bind("<Button-1>", lambda e: self.show_term_explanation("jitter"))
+        
         self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
         self.jitter_label.grid(row=3, column=1, padx=10, sticky='w')
         
