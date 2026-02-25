@@ -296,7 +296,7 @@ class InternetSpeedMonitor:
         self.last_check_var.set(last_time)
 
         # Обновляем график с периодом "Все время"
-        self.root.after(500, self.update_graph)  # Небольшая задержка для полной загрузки интерфейса     
+#       self.root.after(500, self.update_graph)  # Небольшая задержка для полной загрузки интерфейса     
           
         
         # Загрузка настроек
@@ -3188,6 +3188,11 @@ class InternetSpeedMonitor:
             self.root.after(0, self.stop_test_animation)
             self.test_in_progress = False
             self.root.after(0, lambda: self.test_button.config(state='normal'))
+
+            # Принудительный сбор мусора
+            import gc
+            gc.collect()
+            gc.collect()  # Дважды для надёжности
             
             # ВАЖНО: После завершения теста проверяем, нужно ли запустить мониторинг
             if self.running:
@@ -3303,7 +3308,7 @@ class InternetSpeedMonitor:
             self.root.update_idletasks()
             
             self.root.after(0, self.update_log)
-            self.root.after(0, self.update_graph)
+#           self.root.after(0, self.update_graph)
             
             self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
             self.logger.info(f"UI обновлен: провайдер={client_provider}, тип={connection_type}")
@@ -3565,7 +3570,21 @@ class InternetSpeedMonitor:
 # region ### Можно осторожно менять
     def update_graph(self):
         """Обновление графиков"""
+        # Защита от множественных одновременных вызовов
+        if hasattr(self, '_updating_graph') and self._updating_graph:
+            print("График уже обновляется, пропускаем")
+            return
+            
+        self._updating_graph = True
+        
         try:
+            import matplotlib.pyplot as plt
+            import gc
+            
+            # КРИТИЧЕСКИ ВАЖНО: закрываем все старые фигуры matplotlib
+            plt.close('all')
+            gc.collect()
+            
             self.fig.clear()
             
             conn = sqlite3.connect(self.db_path)
@@ -3574,47 +3593,130 @@ class InternetSpeedMonitor:
             # Определяем период
             period = self.graph_period_var.get()
             
+            # ========== ИСПРАВЛЕННЫЙ БЛОК ДЛЯ ПЕРИОДА "ДЕНЬ" ==========
             if period == "День":
                 # Выбранная дата
                 if hasattr(self, 'graph_date_picker'):
                     selected_date = self.graph_date_picker.get_date()
                     start_date = datetime(selected_date.year, selected_date.month, selected_date.day, 0, 0, 0)
                     end_date = datetime(selected_date.year, selected_date.month, selected_date.day, 23, 59, 59)
+                    
+                    # !!! ВАЖНО: для дня используем GROUP BY по часам, чтобы уменьшить количество точек
+                    cursor.execute('''
+                        SELECT 
+                            strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+                            AVG(download_speed) as avg_download,
+                            AVG(upload_speed) as avg_upload,
+                            AVG(ping) as avg_ping,
+                            AVG(jitter) as avg_jitter
+                        FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                        GROUP BY hour
+                        ORDER BY hour
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                    
+                    # Явно удаляем переменную даты
+                    del selected_date
                 else:
+                    # Если нет выбора даты, берем последние 24 часа
                     start_date = datetime.now() - timedelta(days=1)
                     end_date = datetime.now()
+                    cursor.execute('''
+                        SELECT 
+                            strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+                            AVG(download_speed) as avg_download,
+                            AVG(upload_speed) as avg_upload,
+                            AVG(ping) as avg_ping,
+                            AVG(jitter) as avg_jitter
+                        FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                        GROUP BY hour
+                        ORDER BY hour
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
+            # ========== КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ==========
                     
             elif period == "Неделя":
                 # Выбранная неделя
-                week = int(self.graph_week_combo.get())
-                year = int(self.graph_year_combo.get())
-                first_day = datetime(year, 1, 1)
-                start_date = first_day + timedelta(weeks=week-1)
-                end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
-                
+                if hasattr(self, 'graph_week_combo') and hasattr(self, 'graph_year_combo'):
+                    week = int(self.graph_week_combo.get())
+                    year = int(self.graph_year_combo.get())
+                    # Правильный расчет первого дня недели
+                    first_day = datetime(year, 1, 1)
+                    # Добавляем дни до нужной недели
+                    days_to_add = (week - 1) * 7
+                    start_date = first_day + timedelta(days=days_to_add)
+                    # Корректируем, чтобы первый день был понедельником
+                    while start_date.weekday() != 0:  # 0 = понедельник
+                        start_date -= timedelta(days=1)
+                    end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+                    
+                    cursor.execute('''
+                        SELECT timestamp, download_speed, upload_speed, ping, jitter 
+                        FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                        ORDER BY timestamp
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                    
+                    # Явно удаляем временные переменные
+                    del week, year, first_day, days_to_add
+                else:
+                    start_date = datetime.now() - timedelta(days=7)
+                    end_date = datetime.now()
+                    cursor.execute('''
+                        SELECT timestamp, download_speed, upload_speed, ping, jitter 
+                        FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                        ORDER BY timestamp
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                    
             elif period == "Месяц":
                 # Выбранный месяц (цифрой)
-                month = int(self.graph_month_combo.get())
-                year = int(self.graph_month_year_combo.get())
-                start_date = datetime(year, month, 1)
-                if month == 12:
-                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                if hasattr(self, 'graph_month_combo') and hasattr(self, 'graph_month_year_combo'):
+                    month = int(self.graph_month_combo.get())
+                    year = int(self.graph_month_year_combo.get())
+                    start_date = datetime(year, month, 1)
+                    if month == 12:
+                        end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                    else:
+                        end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
+                    
+                    cursor.execute('''
+                        SELECT timestamp, download_speed, upload_speed, ping, jitter 
+                        FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                        ORDER BY timestamp
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                    
+                    # Явно удаляем временные переменные
+                    del month, year
                 else:
-                    end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
+                    start_date = datetime.now() - timedelta(days=30)
+                    end_date = datetime.now()
+                    cursor.execute('''
+                        SELECT timestamp, download_speed, upload_speed, ping, jitter 
+                        FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                        ORDER BY timestamp
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
                     
             else:  # Все время
                 start_date = datetime.now() - timedelta(days=36500)  # 100 лет
                 end_date = datetime.now()
+                cursor.execute('''
+                    SELECT timestamp, download_speed, upload_speed, ping, jitter 
+                    FROM speed_measurements 
+                    WHERE timestamp BETWEEN ? AND ?
+                    ORDER BY timestamp
+                ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                      end_date.strftime('%Y-%m-%d %H:%M:%S')))
             
-            # Формируем запрос к БД
-            cursor.execute('''
-                SELECT timestamp, download_speed, upload_speed, ping, jitter 
-                FROM speed_measurements 
-                WHERE timestamp BETWEEN ? AND ?
-                ORDER BY timestamp
-            ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
-                  end_date.strftime('%Y-%m-%d %H:%M:%S')))
-            
+            # Получаем данные
             data = cursor.fetchall()
             conn.close()
             
@@ -3623,21 +3725,34 @@ class InternetSpeedMonitor:
                 ax.text(0.5, 0.5, 'Нет данных за выбранный период', 
                        ha='center', va='center', transform=ax.transAxes)
                 self.canvas.draw()
+                
+                # Принудительный сбор мусора в конце
+                gc.collect()
+                self._updating_graph = False
                 return
           
-            # Подготавливаем данные
-            timestamps = [row[0] for row in data]
-            download_speeds = [row[1] for row in data]
-            upload_speeds = [row[2] for row in data]
-            pings = [row[3] for row in data]
-            jitters = [row[4] for row in data]
-            
-            # Преобразуем строки времени в datetime
-            if isinstance(timestamps[0], str):
-                try:
-                    timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S.%f') for ts in timestamps]
-                except ValueError:
-                    timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
+            # Подготавливаем данные (для Дня они уже в агрегированном виде)
+            if period == "День":
+                # Для дня данные уже сгруппированы по часам
+                timestamps = [datetime.strptime(row[0], '%Y-%m-%d %H:00:00') for row in data]
+                download_speeds = [row[1] for row in data]
+                upload_speeds = [row[2] for row in data]
+                pings = [row[3] for row in data]
+                jitters = [row[4] for row in data]
+            else:
+                # Для остальных периодов - как обычно
+                timestamps = [row[0] for row in data]
+                download_speeds = [row[1] for row in data]
+                upload_speeds = [row[2] for row in data]
+                pings = [row[3] for row in data]
+                jitters = [row[4] for row in data]
+                
+                # Преобразуем строки времени в datetime
+                if isinstance(timestamps[0], str):
+                    try:
+                        timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S.%f') for ts in timestamps]
+                    except ValueError:
+                        timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
             
             # Фильтруем N/A значения (None, 0 или пустые) для всех метрик
             download_valid = [(t, v) for t, v in zip(timestamps, download_speeds) if v and v > 0]
@@ -3662,7 +3777,7 @@ class InternetSpeedMonitor:
             else:
                 jitter_valid = []
             
-            # Разделяем обратно на timestamps и values для отображения
+            # Разделяем обратно на timestamps и values
             if download_valid:
                 download_ts, download_vals = zip(*download_valid)
             else:
@@ -3683,6 +3798,9 @@ class InternetSpeedMonitor:
             else:
                 jitter_ts, jitter_vals = [], []
            
+            # Очищаем фигуру перед созданием новых графиков
+            self.fig.clear()
+            
             # Создаем графики
             ax1 = self.fig.add_subplot(211)
             ax2 = self.fig.add_subplot(212)
@@ -3697,12 +3815,11 @@ class InternetSpeedMonitor:
             if upload_vals:
                 ax1.plot(upload_ts, upload_vals, 'r-', label='Отдача', linewidth=2)
 
-            # Добавляем средние значения как пунктирные линии (без текста в легенде)
-            if download_valid or upload_valid:
-                if avg_download > 0:
-                    ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6)
-                if avg_upload > 0:
-                    ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6)
+            # Добавляем средние значения
+            if avg_download > 0:
+                ax1.axhline(y=avg_download, color='b', linestyle='--', linewidth=1, alpha=0.6)
+            if avg_upload > 0:
+                ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6)
 
             # Добавляем линию заявленной скорости (зеленая штрих-пунктирная)
             planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
@@ -3719,7 +3836,6 @@ class InternetSpeedMonitor:
             import matplotlib.dates as mdates
             
             if period == "День":
-                # Для 1 дня показываем только время
                 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
                 ax1.xaxis.set_major_locator(mdates.HourLocator(interval=2))
                 ax1.tick_params(axis='x', rotation=45)
@@ -3738,12 +3854,11 @@ class InternetSpeedMonitor:
             if jitter_vals:
                 ax2.plot(jitter_ts, jitter_vals, color='orange', label='Джиттер', linewidth=2)
             
-            # Добавляем средние значения как пунктирные линии (без текста в легенде)
-            if ping_valid or jitter_valid:
-                if avg_ping > 0:
-                    ax2.axhline(y=avg_ping, color='purple', linestyle='--', linewidth=1, alpha=0.6)
-                if avg_jitter >= 0:
-                    ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6)
+            # Добавляем средние значения
+            if avg_ping > 0:
+                ax2.axhline(y=avg_ping, color='purple', linestyle='--', linewidth=1, alpha=0.6)
+            if avg_jitter >= 0:
+                ax2.axhline(y=avg_jitter, color='orange', linestyle='--', linewidth=1, alpha=0.6)
 
             # Добавляем пороговые линии
             ax2.axhline(y=60, color='purple', linestyle='-.', linewidth=1.5, alpha=0.5, label='Порог пинга (60 мс)')
@@ -3780,9 +3895,21 @@ class InternetSpeedMonitor:
             
             self.status_var.set(f"График обновлен. Показано точек: {len(data)}")
             
+            # Явно удаляем большие списки данных
+            del timestamps, download_speeds, upload_speeds, pings, jitters
+            del download_valid, upload_valid, ping_valid_all, jitter_valid_all
+            del download_ts, download_vals, upload_ts, upload_vals
+            del ping_ts, ping_vals, jitter_ts, jitter_vals
+            
+            # Финальный сбор мусора
+            gc.collect()
+            gc.collect()
+            
         except Exception as e:
             self.logger.error(f"Ошибка обновления графика: {e}")
             self.status_var.set(f"Ошибка обновления графика: {e}")
+        finally:
+            self._updating_graph = False
 # endregion
 
     def export_graph(self):
