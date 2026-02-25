@@ -2790,29 +2790,37 @@ class InternetSpeedMonitor:
             
             app_name = "InternetSpeedMonitor"
             
-            # Путь к pythonw.exe (без окна консоли)
-            python_dir = os.path.dirname(sys.executable)
-            pythonw_path = os.path.join(python_dir, "pythonw.exe")
-            
-            if not os.path.exists(pythonw_path):
-                pythonw_path = sys.executable
-            
-            if getattr(sys, 'frozen', False):
-                script_path = sys.executable
-            else:
-                script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "main.py")
-            
             if self.auto_start_var.get():
-                cmd = f'"{pythonw_path}" "{script_path}"'
+                # Определяем путь к исполняемому файлу
+                if getattr(sys, 'frozen', False):
+                    # EXE режим - сам exe файл
+                    script_path = sys.executable
+                else:
+                    # Режим разработки - python + main.py
+                    python_dir = os.path.dirname(sys.executable)
+                    pythonw_path = os.path.join(python_dir, "pythonw.exe")
+                    if not os.path.exists(pythonw_path):
+                        pythonw_path = sys.executable
+                    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "main.py")
+                    script_path = f'"{pythonw_path}" "{script_path}"'
+                
+                # В EXE режиме просто путь к exe
+                if getattr(sys, 'frozen', False):
+                    cmd = f'"{script_path}"'
+                else:
+                    cmd = script_path
+                    
                 winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
                 self.logger.info(f"Добавлено в автозапуск: {cmd}")
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
+                    self.logger.info("Удалено из автозапуска")
                 except FileNotFoundError:
                     pass
             
             winreg.CloseKey(key)
+                
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
 # endregion
