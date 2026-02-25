@@ -49,35 +49,47 @@ Write-Host "  + All dependencies installed" -ForegroundColor Green
 
 # Step 3.5: Kill any running speedwatch processes
 Write-Host "[3.5/8] Killing any running speedwatch processes..." -ForegroundColor Yellow
-Get-Process | Where-Object { $_.ProcessName -like "*speedwatch*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
-Write-Host "  + Old processes terminated" -ForegroundColor Green
+
+# Ищем все процессы, связанные со speedwatch
+$processes = Get-Process | Where-Object { $_.ProcessName -like "*speedwatch*" -or $_.ProcessName -like "speedwatch*" }
+
+if ($processes) {
+    foreach ($proc in $processes) {
+        Write-Host "  - Killing process: $($proc.ProcessName) (PID: $($proc.Id))" -ForegroundColor Yellow
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 2
+    Write-Host "  + Old processes terminated" -ForegroundColor Green
+} else {
+    Write-Host "  + No speedwatch processes found" -ForegroundColor Green
+}
 
 # Step 4: Clean previous builds
 Write-Host "[4/8] Cleaning previous builds..." -ForegroundColor Yellow
 
-# Пытаемся удалить папки
-if (Test-Path "src\dist") {
-    try {
-        Remove-Item -Recurse -Force "src\dist" -ErrorAction Stop
-        Write-Host "  + src\dist folder removed" -ForegroundColor Green
-    } catch {
-        Write-Host "  - Could not remove src\dist (might be in use)" -ForegroundColor Yellow
-        # Пробуем переименовать и удалить позже
-        Rename-Item "src\dist" "src\dist_old" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
-        Remove-Item -Recurse -Force "src\dist_old" -ErrorAction SilentlyContinue
+# Максимальные усилия по удалению папки dist
+$maxAttempts = 3
+$attempt = 1
+while ($attempt -le $maxAttempts) {
+    if (Test-Path "src\dist") {
+        try {
+            Remove-Item -Recurse -Force "src\dist" -ErrorAction Stop
+            Write-Host "  + src\dist folder removed on attempt $attempt" -ForegroundColor Green
+            break
+        } catch {
+            Write-Host "  - Attempt $attempt failed to remove src\dist" -ForegroundColor Yellow
+            # Пробуем найти и убить процесс, который блокирует
+            $lockingProcesses = Get-Process | Where-Object { $_.Modules.FileName -like "*speedwatch*" }
+            foreach ($proc in $lockingProcesses) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 2
+            $attempt++
+        }
+    } else {
+        Write-Host "  + src\dist folder does not exist" -ForegroundColor Green
+        break
     }
-}
-
-if (Test-Path "src\build") {
-    Remove-Item -Recurse -Force "src\build" -ErrorAction SilentlyContinue
-    Write-Host "  + src\build folder removed" -ForegroundColor Green
-}
-
-if (Test-Path "*.spec") {
-    Remove-Item -Force "*.spec" -ErrorAction SilentlyContinue
-    Write-Host "  + .spec files removed" -ForegroundColor Green
 }
 
 # Step 4.5: Create .env file if it doesn't exist
@@ -136,6 +148,15 @@ if (Test-Path "src\dist") {
     Get-ChildItem src\dist | ForEach-Object { Write-Host "    - $($_.Name)" }
 } else {
     Write-Host "    - dist folder still not found!" -ForegroundColor Red
+}
+
+# Step 5.6: Remove build folder (keep only dist)
+Write-Host "[5.6/8] Removing build folder..." -ForegroundColor Yellow
+if (Test-Path "src\build") {
+    Remove-Item -Recurse -Force "src\build" -ErrorAction SilentlyContinue
+    Write-Host "  + build folder removed" -ForegroundColor Green
+} else {
+    Write-Host "  + build folder not found" -ForegroundColor Green
 }
 
 # Step 6: Check created files
