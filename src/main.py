@@ -2909,20 +2909,18 @@ class InternetSpeedMonitor:
 # endregion
 
     def _perform_speed_test(self):
-        """Выполнение теста скорости через внешний openspeedtest-cli"""
-        # Определяем переменные ДО try, чтобы они были видны везде
+        """Выполнение теста скорости через openspeedtest-cli"""
         stop_animation = threading.Event()
         console_animation_thread = None
-        process = None  # для timeout
+        
+        import sys
         
         try:
             import os
-            import tempfile
             import re
-            import subprocess
             
-            # Запускаем анимацию в консоли, если она доступна
-            if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():  # Проверяем, что вывод идет в консоль
+            # Запускаем анимацию в консоли
+            if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
                 console_animation_thread = threading.Thread(
                     target=self._console_animation, 
                     args=(stop_animation,),
@@ -2930,12 +2928,11 @@ class InternetSpeedMonitor:
                 )
                 console_animation_thread.start()
             
-            # Проверяем интернет-соединение перед началом
+            # Проверяем интернет
             if not self.check_internet_connection():
                 error_msg = "Нет подключения к интернету"
                 self.logger.error(error_msg)
                 self.root.after(0, lambda: self._update_ui_with_error(error_msg))
-                # Останавливаем анимацию
                 stop_animation.set()
                 if console_animation_thread and console_animation_thread.is_alive():
                     console_animation_thread.join(timeout=1)
@@ -2943,191 +2940,38 @@ class InternetSpeedMonitor:
                 return
 
             self.root.after(0, lambda: self.status_var.set("Запуск теста скорости..."))
-            self.logger.info("Запуск теста скорости через openspeedtest-cli...")
+            self.logger.info("Запуск теста скорости...")
 
-            # Путь к скрипту openspeedtest-cli
-            if getattr(sys, 'frozen', False):
-                # В EXE режиме файл рядом с exe
-                cli_path = os.path.join(os.path.dirname(sys.executable), "openspeedtest-cli-fixed")
-            else:
-                # В режиме разработки файл в папке src
-                cli_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openspeedtest-cli-fixed")
-
-            if not os.path.exists(cli_path):
-                error_msg = f"Файл openspeedtest-cli не найден по пути: {cli_path}"
-                self.logger.error(error_msg)
-                self.root.after(0, lambda: self._update_ui_with_error(error_msg))
-                # Останавливаем анимацию
-                stop_animation.set()
-                if console_animation_thread and console_animation_thread.is_alive():
-                    console_animation_thread.join(timeout=1)
-                self.test_in_progress = False
-                return
-
-            # Запускаем процесс с перенаправлением вывода в файл
-            stdout_temp = tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.txt')
-            stderr_temp = tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False, suffix='.txt')
-            stdout_temp.close()
-            stderr_temp.close()
-
-            # Определяем какой python использовать
-            if getattr(sys, 'frozen', False):
-                # В EXE режиме используем python из системы
-                python_exe = "C:\\Python312\\python.exe"
-                if not os.path.exists(python_exe):
-                    # Пробуем найти python через where
-                    try:
-                        result = subprocess.run(["where", "python"], capture_output=True, text=True, shell=True)
-                        if result.returncode == 0 and result.stdout.strip():
-                            python_exe = result.stdout.strip().split('\n')[0]
-                            self.logger.info(f"Python found via where: {python_exe}")
-                    except Exception as e:
-                        self.logger.warning(f"Error finding python: {e}")
-            else:
-                python_exe = sys.executable
-
-            with open(stdout_temp.name, 'w', encoding='utf-8') as out_f, \
-                 open(stderr_temp.name, 'w', encoding='utf-8') as err_f:
-
-                process = subprocess.Popen(
-                    [python_exe, cli_path],
-                    stdout=out_f,
-                    stderr=err_f,
-                    text=True,
-                    shell=True
-                )
-
-                process.wait(timeout=120)
-
-            # Читаем результаты
-            with open(stdout_temp.name, 'rb') as f:
-                stdout_bytes = f.read()            
-           
-            stdout = None
-            for encoding in ['utf-8', 'cp1251', 'cp866']:
-                try:
-                    stdout = stdout_bytes.decode(encoding)
-                    self.logger.info(f"Декодировано в {encoding}")
-                    break
-                except:
-                    continue
-
-            with open(stderr_temp.name, 'rb') as f:
-                stderr_bytes = f.read()
-            stderr = stderr_bytes.decode('utf-8', errors='ignore')
+            # ЗАПУСКАЕМ МОДУЛЬ И ПОЛУЧАЕМ РЕЗУЛЬТАТ НАПРЯМУЮ
+            from speedtest_runner import SpeedTestRunner
             
-            if stderr:
-                self.logger.warning(f"CLI stderr: {stderr}")
-
-            os.unlink(stdout_temp.name)
-            os.unlink(stderr_temp.name)
-
-            # Парсим информацию о сервере и IP
-            server_name = "OpenSpeedTest"
-            server_city = "Неизвестно"
-            server_provider = "Неизвестно"
-            client_ip = "Неизвестно"
+            runner = SpeedTestRunner(logger=self.logger)
+            result = runner.run_test(duration=10, threads=8, no_submit=True)
             
-            lines = stdout.split('\n')
-            for line in lines:
-                if "Лучший сервер найден:" in line:
-                    try:
-                        full = line.split("Лучший сервер найден:", 1)[1].strip()
-                        clean = re.sub(r'\s*\(\d+\.?\d*\s*мс\s*\)\s*$', '', full)
-                        
-                        # Пытаемся выделить город и провайдера
-                        if '(' in clean:
-                            # Формат: "Москва, Россия (СПУТНИК)"
-                            parts = clean.split('(', 1)
-                            city_country = parts[0].strip()
-                            provider = parts[1].rstrip(')').strip()
-                        elif ',' in clean:
-                            # Формат: "Москва, Россия, СПУТНИК" или "Москва, Россия"
-                            parts = clean.split(',', 1)
-                            city_country = parts[0].strip()
-                            remaining = parts[1].strip() if len(parts) > 1 else ""
-                            
-                            if ',' in remaining:
-                                # Еще одна запятая - значит есть провайдер
-                                subparts = remaining.split(',', 1)
-                                provider = subparts[1].strip()
-                            else:
-                                provider = remaining if remaining else "Неизвестно"
-                        else:
-                            city_country = clean
-                            provider = "Неизвестно"
-                        
-                        server_name = clean
-                        server_city = city_country
-                        server_provider = provider
-                        break
-                    except Exception as e:
-                        self.logger.warning(f"Error parsing server info: {e}")
-                
-                # Парсим внешний IP (если есть в выводе)
-                if "Your IP:" in line or "Client IP:" in line or "IP:" in line:
-                    try:
-                        parts = line.split(':', 1)
-                        if len(parts) > 1:
-                            ip_candidate = parts[1].strip()
-                            # Простая проверка что это похоже на IP
-                            if re.match(r'^\d+\.\d+\.\d+\.\d+$', ip_candidate):
-                                client_ip = ip_candidate
-                    except:
-                        pass
-            
-            self.logger.info(f"Server: {server_name}, City: {server_city}, Provider: {server_provider}, Client IP: {client_ip}")
-
-            # Парсим значения (инициализируем как None, чтобы отличать от 0)
-            download_speed = None
-            upload_speed = None
-            ping = None
-            jitter = None
-
-            lines = stdout.split('\n')[-50:]
-            for line in lines:
-                line = line.strip()
-                
-                if "Download:" in line and download_speed is None:
-                    numbers = re.findall(r"(\d+\.?\d*)", line)
-                    if numbers:
-                        download_speed = float(numbers[-1])
-                        self.logger.info(f"Download: {download_speed:.2f} Mbps")
-                
-                if "Upload:" in line and upload_speed is None:
-                    numbers = re.findall(r"(\d+\.?\d*)", line)
-                    if numbers:
-                        upload_speed = float(numbers[-1])
-                        self.logger.info(f"Upload: {upload_speed:.2f} Mbps")
-                
-                if "Ping:" in line and ping is None:
-                    numbers = re.findall(r"(\d+\.?\d*)", line)
-                    if numbers:
-                        ping = float(numbers[-1])
-                        self.logger.info(f"Ping: {ping:.2f} ms")
-                
-                if "Jitter:" in line and jitter is None:
-                    numbers = re.findall(r"(\d+\.?\d*)", line)
-                    if numbers:
-                        jitter = float(numbers[-1])
-                        self.logger.info(f"Jitter: {jitter:.2f} ms")
-
-            # Проверяем, что получили хотя бы что-то
-            if download_speed is None and upload_speed is None and ping is None and jitter is None:
-                error_msg = "Не удалось получить данные о скорости из вывода CLI"
-                self.logger.error(error_msg)
-                self.logger.error(f"Full stdout: {stdout}")
-                self.root.after(0, lambda: self._update_ui_with_error(error_msg))
-                stop_animation.set()
-                if console_animation_thread and console_animation_thread.is_alive():
-                    console_animation_thread.join(timeout=1)
-                self.test_in_progress = False
-                return
-
-            # Останавливаем консольную анимацию
+            # Останавливаем анимацию
             stop_animation.set()
             if console_animation_thread and console_animation_thread.is_alive():
                 console_animation_thread.join(timeout=1)
+            
+            if not result:
+                error_msg = "Не удалось получить данные о скорости"
+                self.logger.error(error_msg)
+                self.root.after(0, lambda: self._update_ui_with_error(error_msg))
+                return
+            
+            # Получаем результаты
+            download_speed = result.get('download')
+            upload_speed = result.get('upload')
+            ping = result.get('ping')
+            jitter = result.get('jitter')
+            server_name = result.get('server', 'OpenSpeedTest')
+            server_city = result.get('server_city', 'Неизвестно')
+            server_provider = result.get('server_provider', 'Неизвестно')
+            
+            self.logger.info(f"Ping: {ping:.2f} ms" if ping else "Ping: N/A")
+            self.logger.info(f"Jitter: {jitter:.2f} ms" if jitter else "Jitter: N/A")
+            self.logger.info(f"Download: {download_speed:.2f} Mbps" if download_speed else "Download: N/A")
+            self.logger.info(f"Upload: {upload_speed:.2f} Mbps" if upload_speed else "Upload: N/A")
 
             # Получаем информацию об IP и провайдере
             ip_info = self.get_external_ip_info()
@@ -3135,10 +2979,7 @@ class InternetSpeedMonitor:
             provider_name = ip_info.get('provider', 'Неизвестно')
             connection_type = ip_info.get('connection_type', 'Неизвестно')
             
-            self.logger.info(f"IP Info: {ip_info}")
-            self.logger.info(f"Client IP: {client_ip}, Provider: {provider_name}, Type: {connection_type}")
-            
-            # Сохраняем результаты с полной информацией  <<<--- ТОЛЬКО ЭТОТ
+            # Сохраняем результаты
             self.save_test_results(
                 download_speed, 
                 upload_speed, 
@@ -3152,63 +2993,27 @@ class InternetSpeedMonitor:
                 connection_type
             )
 
-            # Обновляем интерфейс с полученными значениями
+            # Обновляем интерфейс
             self.root.after(0, lambda: self._update_ui_with_results_and_status(
                 download_speed or 0, 
                 upload_speed or 0, 
                 ping or 0, 
                 jitter or 0, 
                 server_name,
-                "Тест завершен (частичные данные)" if (download_speed is None or upload_speed is None) else "Тест завершен"
+                "Тест завершен"
             ))
 
-            self.logger.info(f"Тест завершен: Download={download_speed if download_speed is not None else 'N/A'} Mbps, "
-                           f"Upload={upload_speed if upload_speed is not None else 'N/A'} Mbps, "
-                           f"Ping={ping if ping is not None else 'N/A'} ms")
-
-        except subprocess.TimeoutExpired:
-            if process:
-                process.kill()
-            error_msg = "Тест превысил время ожидания (60 сек)"
-            self.logger.error(error_msg)
-            self.root.after(0, lambda: self._update_ui_with_error(error_msg))
-            # Останавливаем анимацию
-            stop_animation.set()
-            if console_animation_thread and console_animation_thread.is_alive():
-                console_animation_thread.join(timeout=1)
-            self.test_in_progress = False
         except Exception as e:
-            error_msg = str(e)
-            self.logger.error(f"Ошибка теста скорости: {error_msg}")
-            self.root.after(0, lambda msg=error_msg: self._update_ui_with_error(msg))
-            # Останавливаем анимацию
-            stop_animation.set()
-            if console_animation_thread and console_animation_thread.is_alive():
-                console_animation_thread.join(timeout=1)
-            self.test_in_progress = False
-
-            # После успешного теста
-            self.logger.info(f"Тест завершен. self.running = {self.running}")
-
+            self.logger.error(f"Ошибка теста скорости: {e}")
+            self.root.after(0, lambda msg=str(e): self._update_ui_with_error(msg))
         finally:
-            self.logger.info(f"FINALLY: self.running = {self.running}, self.test_in_progress = {self.test_in_progress}")
-            # Останавливаем анимацию в статус-баре
+            stop_animation.set()
             self.root.after(0, self.stop_test_animation)
             self.test_in_progress = False
             self.root.after(0, lambda: self.test_button.config(state='normal'))
-
-            # Принудительный сбор мусора
+            
             import gc
             gc.collect()
-            gc.collect()  # Дважды для надёжности
-            
-            # ВАЖНО: После завершения теста проверяем, нужно ли запустить мониторинг
-            if self.running:
-                self.logger.info("Мониторинг активен, обновляем таймер следующего теста")
-                self.root.after(0, self.update_next_test_timer)
-            else:
-                self.logger.info("Мониторинг не активен, таймер не обновляется")
-
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
         self.download_var.set(f"{download:.2f} Mbps")
