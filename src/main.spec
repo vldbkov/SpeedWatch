@@ -16,7 +16,8 @@ a = Analysis(
     binaries=[],
     datas=[
         ('icon.ico', '.'),
-        ('openspeedtest-cli-fixed', '.'),
+        ('openspeedtest_cli.py', '.'),
+        ('speedtest_runner.py', '.'),
         ('.env', '.'),
     ],
     hiddenimports=[
