@@ -118,7 +118,7 @@ if ($buildResult -ne 0) {
 }
 Write-Host "  + PyInstaller finished" -ForegroundColor Green
 
-# Step 5.5: Force copy required files to dist (ПОСЛЕ того как dist создан)
+# Step 5.5: Force copy required files to dist
 Write-Host "[5.5/8] Force copying required files to dist..." -ForegroundColor Yellow
 
 # Создаем папку dist если её вдруг нет
@@ -127,9 +127,17 @@ if (-not (Test-Path "src\dist")) {
     Write-Host "  + Created src\dist directory" -ForegroundColor Yellow
 }
 
+# Создаем пустой .env файл если его нет
+if (-not (Test-Path "src\.env")) {
+    Set-Content -Path "src\.env" -Value "OPENSPEEDTEST_API_KEY="
+    Write-Host "  + Created empty .env file in src" -ForegroundColor Yellow
+}
+
+# НОВЫЙ СПИСОК ФАЙЛОВ
 $requiredFiles = @(
     @{Source="src\icon.ico"; Destination="src\dist\icon.ico"},
-    @{Source="src\openspeedtest-cli-fixed"; Destination="src\dist\openspeedtest-cli-fixed"},
+    @{Source="src\openspeedtest_cli.py"; Destination="src\dist\openspeedtest_cli.py"},
+    @{Source="src\speedtest_runner.py"; Destination="src\dist\speedtest_runner.py"},
     @{Source="src\.env"; Destination="src\dist\.env"}
 )
 
@@ -140,14 +148,6 @@ foreach ($file in $requiredFiles) {
     } else {
         Write-Host "  - Source file $($file.Source) not found!" -ForegroundColor Red
     }
-}
-
-# Проверяем результат
-Write-Host "  Final dist contents:" -ForegroundColor Yellow
-if (Test-Path "src\dist") {
-    Get-ChildItem src\dist | ForEach-Object { Write-Host "    - $($_.Name)" }
-} else {
-    Write-Host "    - dist folder still not found!" -ForegroundColor Red
 }
 
 # Step 5.6: Remove build folder (keep only dist)
