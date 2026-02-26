@@ -309,16 +309,25 @@ class InternetSpeedMonitor:
         # Очистка старых записей при запуске
         self.clean_old_records()
 
-        self.is_first_load = False  # Сбрасываем после загрузки
-        self.update_log()         # Обновляем журнал принудительно
-       
+        # После загрузки настроек
+        self.is_first_load = False
+        self.update_log()
+        
+        # Для EXE режима - принудительно показываем окно при первом запуске
+        if getattr(sys, 'frozen', False) and not self.minimize_to_tray_var.get():
+            # Небольшая задержка, чтобы окно успело инициализироваться
+            self.root.after(500, self.show_window)      
         
         # Создание меню для трея
         self.create_tray_icon()
-        
+
+        # Для EXE режима - применяем автозапуск сразу при старте
+        if getattr(sys, 'frozen', False) and self.auto_start_var.get():
+            self.update_autostart()
+            self.logger.info("Автозапуск активирован при старте EXE")
+
         # При закрытии окна - сворачиваем в трей и обновляем меню трея
-        self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)
-        
+        self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)        
        
         # Сворачиваем в трей если включена настройка
         if self.minimize_to_tray_var.get():
@@ -329,7 +338,6 @@ class InternetSpeedMonitor:
             self.update_tray_menu()
         except Exception:
             pass
-
 
         # При автозапуске даем сети время инициализироваться
         if self.auto_start_var.get():
@@ -2664,11 +2672,15 @@ class InternetSpeedMonitor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Загружаем интервал
             cursor.execute("SELECT value FROM settings WHERE key='interval'")
             result = cursor.fetchone()
             if result:
                 self.interval_var.set(int(result[0]))
+            else:
+                self.interval_var.set(60)  # значение по умолчанию
 
+            # Загружаем заявленную скорость
             cursor.execute("SELECT value FROM settings WHERE key='planned_speed'")
             result = cursor.fetchone()
             if result:
@@ -2676,53 +2688,77 @@ class InternetSpeedMonitor:
             else:
                 self.planned_speed_var.set(100)
 
-            # === НОВЫЕ ПОРОГИ ===
+            # Загружаем пороги
             cursor.execute("SELECT value FROM settings WHERE key='download_threshold'")
             result = cursor.fetchone()
             if result:
                 self.download_threshold_var.set(int(result[0]))
+            else:
+                self.download_threshold_var.set(25)
             
             cursor.execute("SELECT value FROM settings WHERE key='ping_threshold'")
             result = cursor.fetchone()
             if result:
                 self.ping_threshold_var.set(int(result[0]))
+            else:
+                self.ping_threshold_var.set(100)
             
             cursor.execute("SELECT value FROM settings WHERE key='jitter_threshold'")
             result = cursor.fetchone()
             if result:
                 self.jitter_threshold_var.set(int(result[0]))
+            else:
+                self.jitter_threshold_var.set(15)
             
             cursor.execute("SELECT value FROM settings WHERE key='jitter_frequency'")
             result = cursor.fetchone()
             if result:
                 self.jitter_frequency_var.set(int(result[0]))
-            # ===================
+            else:
+                self.jitter_frequency_var.set(30)
 
-            # === НАСТРОЙКИ ОЧИСТКИ ===
+            # Загружаем настройки очистки
             cursor.execute("SELECT value FROM settings WHERE key='clean_enabled'")
             result = cursor.fetchone()
             if result:
                 self.clean_enabled_var.set(result[0] == '1')
+            else:
+                self.clean_enabled_var.set(True)
             
             cursor.execute("SELECT value FROM settings WHERE key='clean_days'")
             result = cursor.fetchone()
             if result:
                 self.auto_clean_days_var.set(int(result[0]))
+            else:
+                self.auto_clean_days_var.set(90)
 
+            # Загружаем автозапуск
             cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
             result = cursor.fetchone()
             if result:
                 self.auto_start_var.set(result[0] == '1')
+            else:
+                # Для EXE режима автозапуск включен по умолчанию
+                if getattr(sys, 'frozen', False):
+                    self.auto_start_var.set(True)
+                else:
+                    self.auto_start_var.set(False)
             
+            # Загружаем настройку трея
             cursor.execute("SELECT value FROM settings WHERE key='minimize_to_tray'")
             result = cursor.fetchone()
             if result:
                 self.minimize_to_tray_var.set(result[0] == '1')
+            else:
+                # Для EXE режима сворачивание в трей ОТКЛЮЧЕНО по умолчанию
+                if getattr(sys, 'frozen', False):
+                    self.minimize_to_tray_var.set(False)
+                else:
+                    self.minimize_to_tray_var.set(True)
             
             conn.close()
         except Error as e:
             self.logger.error(f"Ошибка загрузки настроек: {e}")
-
 
     def save_settings(self, restart=True, show_message=True):
         """Сохранение настроек в БД"""
