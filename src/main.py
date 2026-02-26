@@ -45,7 +45,7 @@ def safe_print(text, end='\n', flush=False):
     except:
         pass
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 def parse_arguments():
     """Парсинг аргументов командной строки"""
@@ -302,7 +302,11 @@ class InternetSpeedMonitor:
         # Загрузка настроек
         self.is_first_load = True  # Флаг первого запуска
         self.load_settings()
-        
+
+        # ПОКАЗЫВАЕМ ОКНО "О ПРОГРАММЕ" ПРИ ПЕРВОМ ЗАПУСКЕ
+        if self.is_first_load:
+            self.root.after(500, self.show_about_window)  # Небольшая задержка
+
         # Загружаем последние значения измерений
         self.load_last_measurement()
 
@@ -1053,23 +1057,32 @@ class InternetSpeedMonitor:
         """Показать окно 'О программе'"""
         try:
             # Создаем окно
-            about_window = tk.Toplevel()
+            about_window = tk.Toplevel(self.root)
             about_window.title("О программе")
-            about_window.geometry("450x350")
+            
+            # ФИКСИРОВАННЫЕ РАЗМЕРЫ
+            window_width = 450
+            window_height = 350
+            
+            about_window.geometry(f"{window_width}x{window_height}")
             about_window.resizable(False, False)
             
-            # Делаем окно независимым от главного
-            about_window.transient()  # Убираем зависимость
+            # Делаем окно модальным
+            about_window.transient(self.root)
             about_window.grab_set()
-            about_window.focus_force()
             
-            # Центрируем окно по центру экрана
-            about_window.update_idletasks()
+            # Центрируем по центру ЭКРАНА (не главного окна)
             screen_width = about_window.winfo_screenwidth()
             screen_height = about_window.winfo_screenheight()
-            x = (screen_width - 450) // 2
-            y = (screen_height - 350) // 2
+            
+            x = (screen_width - window_width) // 2
+            y = (screen_height - window_height) // 2
+            
             about_window.geometry(f"+{x}+{y}")
+            
+            # Принудительно поднимаем окно
+            about_window.lift()
+            about_window.focus_force()
             
             # Основной контейнер
             main_frame = ttk.Frame(about_window, padding="20")
@@ -1098,7 +1111,6 @@ class InternetSpeedMonitor:
                 text=f"Версия {__version__}",
                 font=('Arial', 11, 'bold')
             )
-
             version_label.pack(pady=(0, 15))
             
             # Пожелание
@@ -1138,7 +1150,7 @@ class InternetSpeedMonitor:
             sponsor_link.pack(pady=2)
             sponsor_link.bind("<Button-1>", lambda e: self._open_url("https://yoomoney.ru/to/4100119453410920"))
             
-            # Кнопка "Понятно" - ИСПРАВЛЕН размер
+            # Кнопка "Понятно"
             ok_button = tk.Button(
                 main_frame,
                 text="Понятно",
@@ -1150,17 +1162,10 @@ class InternetSpeedMonitor:
             )
             ok_button.pack(pady=(10, 0))
             
-            # Принудительное отображение
-            about_window.lift()
-            about_window.attributes('-topmost', True)
-            about_window.after(100, lambda: about_window.attributes('-topmost', False))
-            
             self.logger.info("Окно 'О программе' успешно создано")
             
         except Exception as e:
             self.logger.error(f"Ошибка создания окна 'О программе': {e}")
-
-
     def check_for_updates(self):
         """Проверка наличия обновлений на GitHub"""
         try:
@@ -2671,7 +2676,18 @@ class InternetSpeedMonitor:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+
+            # Проверяем, есть ли вообще настройки
+            cursor.execute("SELECT COUNT(*) FROM settings")
+            settings_count = cursor.fetchone()[0]
             
+            # Если настроек нет - это первый запуск
+            if settings_count == 0:
+                self.is_first_load = True
+                self.logger.info("Первый запуск программы")
+            else:
+                self.is_first_load = False
+
             # Загружаем интервал
             cursor.execute("SELECT value FROM settings WHERE key='interval'")
             result = cursor.fetchone()
