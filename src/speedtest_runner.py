@@ -76,10 +76,21 @@ class SpeedTestRunner:
         
         # Получаем вывод
         stdout = stdout_capture.getvalue()
-        stderr = stderr_capture.getvalue()        
-       
+        stderr = stderr_capture.getvalue()
+        
+        # Диагностика через существующий логгер
         if stderr:
-            self.log(f"STDERR: {stderr}")
+            self.logger.error(f"STDERR from speedtest: {stderr}")
+        
+        # Проверяем, есть ли в выводе информация о загрузке
+        if "Download:" in stdout:
+            # Находим все строки с Download для диагностики
+            import re
+            download_lines = re.findall(r'Download:.*', stdout)
+            self.logger.info(f"Все строки Download (последние 5): {download_lines[-5:]}")
+        else:
+            self.logger.error("В выводе нет строк Download")
+            self.logger.error(f"Последние 500 символов вывода:\n{stdout[-500:]}")
         
         if not stdout:
             self.log("ОШИБКА: stdout пустой!")
