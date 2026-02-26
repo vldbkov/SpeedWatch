@@ -11,6 +11,7 @@ import os
 import io
 import contextlib
 import re
+from datetime import datetime
 
 class SpeedTestRunner:
     """Класс для запуска speedtest без внешнего процесса"""
@@ -75,12 +76,8 @@ class SpeedTestRunner:
         
         # Получаем вывод
         stdout = stdout_capture.getvalue()
-        stderr = stderr_capture.getvalue()
-        
-        # Сохраняем для отладки
-        with open("speedtest_debug.log", "w", encoding="utf-8") as f:
-            f.write(f"STDOUT:\n{stdout}\n\nSTDERR:\n{stderr}")
-        
+        stderr = stderr_capture.getvalue()        
+       
         if stderr:
             self.log(f"STDERR: {stderr}")
         
@@ -115,7 +112,7 @@ class SpeedTestRunner:
         
         lines = output.split('\n')
         
-        # Парсим сервер
+        # Парсим сервер (оставляем как есть)
         for line in lines:
             if "Лучший сервер найден:" in line:
                 try:
@@ -141,10 +138,42 @@ class SpeedTestRunner:
                 except:
                     pass
         
-        # Парсим значения из последних строк
+        # Парсим значения - ищем во всех строках, но предпочитаем последние
         for line in lines:
             line = line.strip()
             
+            # Пинг
+            if "Ping:" in line:
+                match = re.search(r'Ping:\s+(\d+\.?\d*)', line)
+                if match:
+                    result['ping'] = float(match.group(1))
+            
+            # Джиттер
+            if "Jitter:" in line:
+                match = re.search(r'Jitter:\s+(\d+\.?\d*)', line)
+                if match:
+                    result['jitter'] = float(match.group(1))
+            
+            # Download
+            if "Download:" in line:
+                match = re.search(r'Download:\s+(\d+\.?\d*)', line)
+                if match:
+                    # Берем последнее ненулевое значение
+                    val = float(match.group(1))
+                    if val > 0:
+                        result['download'] = val
+            
+            # Upload
+            if "Upload:" in line:
+                match = re.search(r'Upload:\s+(\d+\.?\d*)', line)
+                if match:
+                    val = float(match.group(1))
+                    if val > 0:
+                        result['upload'] = val
+        
+        # Если не нашли в процессе, ищем в финальном блоке (последние 20 строк)
+        last_lines = lines[-20:]
+        for line in last_lines:
             if "Ping:" in line and result['ping'] is None:
                 match = re.search(r'Ping:\s+(\d+\.?\d*)', line)
                 if match:
@@ -154,21 +183,7 @@ class SpeedTestRunner:
                 match = re.search(r'Jitter:\s+(\d+\.?\d*)', line)
                 if match:
                     result['jitter'] = float(match.group(1))
-            
-            if "Download:" in line and result['download'] is None:
-                match = re.search(r'Download:\s+(\d+\.?\d*)', line)
-                if match:
-                    result['download'] = float(match.group(1))
-            
-            if "Upload:" in line and result['upload'] is None:
-                match = re.search(r'Upload:\s+(\d+\.?\d*)', line)
-                if match:
-                    result['upload'] = float(match.group(1))
         
-        # Проверяем, что получили хотя бы что-то
-        if result['download'] is None and result['upload'] is None and result['ping'] is None:
-            return None
-            
         return result
 
 # Для тестирования
