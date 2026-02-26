@@ -3757,12 +3757,12 @@ class InternetSpeedMonitor:
             if planned > 0:
                 ax1.axhline(y=planned, color='green', linestyle='-.', linewidth=2, alpha=0.8, label=f'Тариф ({planned} Mbps)')
 
+            # Настройка осей и легенд
             ax1.set_title('Скорость интернета', fontsize=title_fontsize)
             ax1.set_ylabel('Скорость (Mbps)', fontsize=label_fontsize)
             ax1.legend(fontsize=label_fontsize, loc='lower right')
             ax1.grid(True, alpha=0.3)
             ax1.tick_params(axis='both', labelsize=label_fontsize)
-            
            
             # Форматируем ось X в зависимости от выбранного периода
             import matplotlib.dates as mdates
@@ -3820,7 +3820,23 @@ class InternetSpeedMonitor:
                 elif period == "Месяц":
                     ax2.xaxis.set_major_locator(MaxNLocator(10))
                 ax2.tick_params(axis='x', rotation=45)
-            
+
+            # <<<--- ВСТАВЬТЕ ЭТОТ БЛОК ЗДЕСЬ --->>>
+            # Проверяем количество точек данных
+            total_points = len(data)
+            if total_points == 1:
+                # Для одной точки устанавливаем разумный диапазон
+                single_time = timestamps[0]
+                margin = timedelta(hours=12)
+                x_min = single_time - margin
+                x_max = single_time + margin
+                
+                ax1.set_xlim(x_min, x_max)
+                ax2.set_xlim(x_min, x_max)
+                
+                self.logger.info(f"Одна точка данных: диапазон {x_min} - {x_max}")
+            # <<<--- КОНЕЦ БЛОКА --->>>
+
             # Автоматическое форматирование дат
             self.fig.autofmt_xdate()
             
