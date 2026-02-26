@@ -2322,24 +2322,12 @@ class InternetSpeedMonitor:
                     week = int(self.stats_week_combo.get())
                     year = int(self.stats_week_year_combo.get())
                     
-                    # Правильный расчет даты по номеру недели
-                    # Находим первый день года
-                    first_day = datetime(year, 1, 1)
-                    # Находим первый понедельник года
-                    days_to_monday = (7 - first_day.weekday()) % 7
-                    first_monday = first_day + timedelta(days=days_to_monday)
+                    # ПРОСТОЙ СПОСОБ: используем ISO календарь
+                    # Находим понедельник нужной недели
+                    start_date = datetime.fromisocalendar(year, week, 1)
+                    end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
                     
-                    # Смещаем на нужную неделю
-                    start_date = first_monday + timedelta(weeks=week-1)
-                    end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
-                else:
-                    # Если нет выбора, берем текущую неделю
-                    today = datetime.now()
-                    # Находим понедельник текущей недели
-                    days_to_monday = today.weekday()  # понедельник = 0
-                    start_date = today - timedelta(days=days_to_monday)
-                    start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                    end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+                    self.logger.info(f"Неделя {week}, {year}: {start_date.date()} - {end_date.date()}")
             
             elif period == "Месяц":
                 # Выбранный месяц и год
