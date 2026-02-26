@@ -2133,21 +2133,22 @@ class InternetSpeedMonitor:
         planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 100
         
         # Загрузка
-        download_percent = (stats['avg_download'] / planned * 100) if planned > 0 else 0
-        download_diff = planned - stats['avg_download']
+        download_text = f"📥 Загрузка: {stats['avg_download']:.1f} Mbps  (тариф {planned} Mbps)" if stats['avg_download'] is not None else "📥 Загрузка: —"
         
-        download_text = f"📥 Загрузка: {stats['avg_download']:.1f} Mbps  (тариф {planned} Mbps)"
-        if download_diff > 0:
-            download_text += f"  🔻 ниже на {download_diff/planned*100:.1f}%"
+        if stats['avg_download'] is not None and planned > 0:
+            download_diff = planned - stats['avg_download']
+            if download_diff > 0:
+                download_text += f"  🔻 ниже на {download_diff/planned*100:.1f}%"
+        
         ttk.Label(self.tariff_frame, text=download_text, font=('Arial', 9)).pack(anchor='w', pady=1)
         
         # Отдача
-        upload_text = f"📤 Отдача: {stats['avg_upload']:.1f} Mbps"
+        upload_text = f"📤 Отдача: {stats['avg_upload']:.1f} Mbps" if stats['avg_upload'] is not None else "📤 Отдача: —"
         ttk.Label(self.tariff_frame, text=upload_text, font=('Arial', 9)).pack(anchor='w', pady=1)
         
-        # Процент времени ниже тарифа (оценка по hourly данным)
-        if stats['hourly']:
-            low_count = sum(1 for h in stats['hourly'] if h[1] < planned * 0.9)
+        # Процент времени ниже тарифа
+        if stats.get('hourly') and planned > 0:
+            low_count = sum(1 for h in stats['hourly'] if h[1] is not None and h[1] < planned * 0.9)
             low_percent = (low_count / len(stats['hourly'])) * 100
             ttk.Label(self.tariff_frame, text=f"⏱️ Ниже тарифа: {low_percent:.0f}% времени", 
                      font=('Arial', 9)).pack(anchor='w', pady=1)
@@ -2155,17 +2156,21 @@ class InternetSpeedMonitor:
     def _fill_stability_block(self, stats):
         """Заполнение блока стабильности"""
         # Пинг
-        ping_text = f"📶 Пинг: {stats['avg_ping']:.1f} ms"
+        ping_text = f"📶 Пинг: {stats['avg_ping']:.1f} ms" if stats['avg_ping'] is not None else "📶 Пинг: —"
         ttk.Label(self.stability_frame, text=ping_text, font=('Arial', 9)).pack(anchor='w', pady=1)
         
         # Джиттер
-        jitter_text = f"📊 Джиттер: {stats['avg_jitter']:.1f} ms"
-        if stats['avg_jitter'] > 15:
-            jitter_text += " ⚠️"
-        ttk.Label(self.stability_frame, text=jitter_text, font=('Arial', 9)).pack(anchor='w', pady=1)        
-       
+        if stats['avg_jitter'] is not None:
+            jitter_text = f"📊 Джиттер: {stats['avg_jitter']:.1f} ms"
+            if stats['avg_jitter'] > 15:
+                jitter_text += " ⚠️"
+        else:
+            jitter_text = "📊 Джиттер: —"
+        ttk.Label(self.stability_frame, text=jitter_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
         # Колебания скорости
-        if stats['max_download'] > 0 and stats['min_download'] > 0:
+        if (stats['max_download'] is not None and stats['min_download'] is not None and 
+            stats['avg_download'] is not None and stats['avg_download'] > 0):
             variation = ((stats['max_download'] - stats['min_download']) / stats['avg_download']) * 100
             ttk.Label(self.stability_frame, text=f"🌡️ Колебания: ±{variation:.0f}%", 
                      font=('Arial', 9)).pack(anchor='w', pady=1)
@@ -2174,7 +2179,7 @@ class InternetSpeedMonitor:
         """Заполнение блока проблемных периодов"""
         period = self.stats_period_var.get()
         
-        if period == "День" and stats['hourly']:
+        if period == "День" and stats.get('hourly'):
             # Получаем день недели для выбранной даты
             day_names = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА', 'ВОСКРЕСЕНЬЕ']
             
@@ -2189,39 +2194,68 @@ class InternetSpeedMonitor:
             ttk.Label(self.problems_frame, text=f"🕐 Пиковые нагрузки: {day_name}", 
                      font=('Arial', 9, 'bold')).pack(anchor='w', pady=1)
             
-            # Сортируем по скорости (самые плохие часы)
-            bad_hours = sorted(stats['hourly'], key=lambda x: x[1])[:3]
-            for hour_data in bad_hours:
-                hour = int(hour_data[0])
-                speed = hour_data[1]
-                ttk.Label(self.problems_frame, 
-                         text=f"   {hour:02d}:00 - {hour+1:02d}:00  ({speed:.0f} Mbps)",
-                         font=('Arial', 9)).pack(anchor='w')
+            # Фильтруем часы с валидными значениями скорости
+            valid_hours = [h for h in stats['hourly'] if len(h) > 1 and h[1] is not None]
+            
+            if valid_hours:
+                # Сортируем по скорости (самые плохие часы)
+                bad_hours = sorted(valid_hours, key=lambda x: x[1])[:3]
+                for hour_data in bad_hours:
+                    hour = int(hour_data[0]) if hour_data[0] is not None else 0
+                    speed = hour_data[1] if hour_data[1] is not None else 0
+                    ttk.Label(self.problems_frame, 
+                             text=f"   {hour:02d}:00 - {hour+1:02d}:00  ({speed:.0f} Mbps)",
+                             font=('Arial', 9)).pack(anchor='w')
+            else:
+                ttk.Label(self.problems_frame, text="   Нет данных по часам", 
+                         font=('Arial', 9, 'italic')).pack(anchor='w')
         
         else:
             # Для других периодов показываем худшее время и худший день
-            if stats['hourly']:
-                worst_hour = min(stats['hourly'], key=lambda x: x[1])
-                hour = int(worst_hour[0])
-                ttk.Label(self.problems_frame, 
-                         text=f"🕐 Худшее время: {hour:02d}:00 - {hour+1:02d}:00",
-                         font=('Arial', 9)).pack(anchor='w', pady=1)
+            has_data = False
             
-            if stats['daily']:
-                worst_day = min(stats['daily'], key=lambda x: x[2])
-                day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][int(worst_day[0])]
-                ttk.Label(self.problems_frame, 
-                         text=f"📉 Худший день: {day_name} ({worst_day[1][8:10]}.{worst_day[1][5:7]})",
+            # Худшее время (по часам)
+            if stats.get('hourly'):
+                # Фильтруем часы с валидными значениями
+                valid_hourly = [h for h in stats['hourly'] if len(h) > 1 and h[1] is not None]
+                if valid_hourly:
+                    worst_hour = min(valid_hourly, key=lambda x: x[1])
+                    hour = int(worst_hour[0]) if worst_hour[0] is not None else 0
+                    ttk.Label(self.problems_frame, 
+                             text=f"🕐 Худшее время: {hour:02d}:00 - {hour+1:02d}:00",
+                             font=('Arial', 9)).pack(anchor='w', pady=1)
+                    has_data = True
+            
+            # Худший день
+            if stats.get('daily'):
+                # Фильтруем дни с валидными значениями
+                valid_daily = [d for d in stats['daily'] if len(d) > 2 and d[2] is not None]
+                if valid_daily:
+                    worst_day = min(valid_daily, key=lambda x: x[2])
+                    day_of_week = int(worst_day[0]) if worst_day[0] is not None else 0
+                    day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][day_of_week]
+                    day_str = worst_day[1] if worst_day[1] is not None else ""
+                    ttk.Label(self.problems_frame, 
+                             text=f"📉 Худший день: {day_name} ({day_str[8:10]}.{day_str[5:7]})",
+                             font=('Arial', 9)).pack(anchor='w', pady=1)
+                    has_data = True
+            
+            if not has_data:
+                ttk.Label(self.problems_frame, text="🕐 Худшее время: —", 
+                         font=('Arial', 9)).pack(anchor='w', pady=1)
+                ttk.Label(self.problems_frame, text="📉 Худший день: —", 
                          font=('Arial', 9)).pack(anchor='w', pady=1)
 
     def _fill_total_stats_block(self, stats):
         """Заполнение блока общей статистики"""
-        ttk.Label(self.total_stats_frame, text=f"📊 Всего измерений: {stats['count']}", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
-        ttk.Label(self.total_stats_frame, text=f"🏆 Лучшая скорость: {stats['max_download']:.1f} Mbps", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
-        ttk.Label(self.total_stats_frame, text=f"🐢 Худшая скорость: {stats['min_download']:.1f} Mbps", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
+        count_text = f"📊 Всего измерений: {stats['count']}" if stats['count'] is not None else "📊 Всего измерений: —"
+        ttk.Label(self.total_stats_frame, text=count_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        best_text = f"🏆 Лучшая скорость: {stats['max_download']:.1f} Mbps" if stats['max_download'] is not None else "🏆 Лучшая скорость: —"
+        ttk.Label(self.total_stats_frame, text=best_text, font=('Arial', 9)).pack(anchor='w', pady=1)
+        
+        worst_text = f"🐢 Худшая скорость: {stats['min_download']:.1f} Mbps" if stats['min_download'] is not None else "🐢 Худшая скорость: —"
+        ttk.Label(self.total_stats_frame, text=worst_text, font=('Arial', 9)).pack(anchor='w', pady=1)
 
     def get_stats_for_period(self):
         """Получение статистики за выбранный период из БД"""
