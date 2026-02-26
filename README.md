@@ -2,7 +2,7 @@
 
 ![SpeedWatch Logo](src/icon.ico)
 
-[![Презентация](https://img.shields.io/badge/📊-Презентация-blue)](docs/Prez_SpeedWatch02.pdf)
+[![Презентация](https://img.shields.io/badge/📊-Презентация-blue)](docs/Prez_SpeedWatch_v.1.1.0.pdf)
 
 Мониторинг скорости интернета с анализом качества соединения
 
