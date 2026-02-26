@@ -2272,7 +2272,7 @@ class InternetSpeedMonitor:
             
             conn.close()
             
-            if not result or not result[0] or result[0] < 3:
+            if not result or not result[0] or result[0] < 1:
                 return None
             
             # Формируем результат
@@ -2310,48 +2310,95 @@ class InternetSpeedMonitor:
                     selected = self.stats_date_picker.get_date()
                     start_date = datetime(selected.year, selected.month, selected.day, 0, 0, 0)
                     end_date = datetime(selected.year, selected.month, selected.day, 23, 59, 59)
+                else:
+                    # Если нет выбора, берем сегодня
+                    today = datetime.now().date()
+                    start_date = datetime(today.year, today.month, today.day, 0, 0, 0)
+                    end_date = datetime(today.year, today.month, today.day, 23, 59, 59)
             
             elif period == "Неделя":
                 # Выбранная неделя и год
-                week = int(self.stats_week_combo.get())
-                year = int(self.stats_week_year_combo.get())
-                # Первый день года
-                first_day = datetime(year, 1, 1)
-                # Смещение до нужной недели
-                start_date = first_day + timedelta(weeks=week-1)
-                end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+                if hasattr(self, 'stats_week_combo') and hasattr(self, 'stats_week_year_combo'):
+                    week = int(self.stats_week_combo.get())
+                    year = int(self.stats_week_year_combo.get())
+                    
+                    # Правильный расчет даты по номеру недели
+                    # Находим первый день года
+                    first_day = datetime(year, 1, 1)
+                    # Находим первый понедельник года
+                    days_to_monday = (7 - first_day.weekday()) % 7
+                    first_monday = first_day + timedelta(days=days_to_monday)
+                    
+                    # Смещаем на нужную неделю
+                    start_date = first_monday + timedelta(weeks=week-1)
+                    end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+                else:
+                    # Если нет выбора, берем текущую неделю
+                    today = datetime.now()
+                    # Находим понедельник текущей недели
+                    days_to_monday = today.weekday()  # понедельник = 0
+                    start_date = today - timedelta(days=days_to_monday)
+                    start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
             
             elif period == "Месяц":
                 # Выбранный месяц и год
-                months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-                         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
-                month = months.index(self.stats_month_combo.get()) + 1
-                year = int(self.stats_month_year_combo.get())
-                start_date = datetime(year, month, 1)
-                if month == 12:
-                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                if hasattr(self, 'stats_month_combo') and hasattr(self, 'stats_month_year_combo'):
+                    months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                             'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+                    month = months.index(self.stats_month_combo.get()) + 1
+                    year = int(self.stats_month_year_combo.get())
+                    start_date = datetime(year, month, 1)
+                    if month == 12:
+                        end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                    else:
+                        end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
                 else:
-                    end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
+                    # Если нет выбора, берем текущий месяц
+                    today = datetime.now()
+                    start_date = datetime(today.year, today.month, 1)
+                    if today.month == 12:
+                        end_date = datetime(today.year+1, 1, 1) - timedelta(seconds=1)
+                    else:
+                        end_date = datetime(today.year, today.month+1, 1) - timedelta(seconds=1)
             
             elif period == "Квартал":
                 # Выбранный квартал и год
-                quarters = {'I': (1, 3), 'II': (4, 6), 'III': (7, 9), 'IV': (10, 12)}
-                quarter = self.stats_quarter_combo.get()
-                year = int(self.stats_quarter_year_combo.get())
-                start_month, end_month = quarters[quarter]
-                start_date = datetime(year, start_month, 1)
-                if end_month == 12:
-                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                if hasattr(self, 'stats_quarter_combo') and hasattr(self, 'stats_quarter_year_combo'):
+                    quarters = {'I': (1, 3), 'II': (4, 6), 'III': (7, 9), 'IV': (10, 12)}
+                    quarter = self.stats_quarter_combo.get()
+                    year = int(self.stats_quarter_year_combo.get())
+                    start_month, end_month = quarters[quarter]
+                    start_date = datetime(year, start_month, 1)
+                    if end_month == 12:
+                        end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                    else:
+                        end_date = datetime(year, end_month+1, 1) - timedelta(seconds=1)
                 else:
-                    end_date = datetime(year, end_month+1, 1) - timedelta(seconds=1)
+                    # Если нет выбора, берем текущий квартал
+                    today = datetime.now()
+                    quarter = (today.month - 1) // 3 + 1
+                    start_month = (quarter - 1) * 3 + 1
+                    start_date = datetime(today.year, start_month, 1)
+                    if start_month + 2 > 12:
+                        end_date = datetime(today.year+1, 1, 1) - timedelta(seconds=1)
+                    else:
+                        end_date = datetime(today.year, start_month+3, 1) - timedelta(seconds=1)
             
             elif period == "Год":
                 # Выбранный год
-                year = int(self.stats_year_combo.get())
-                start_date = datetime(year, 1, 1)
-                end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                if hasattr(self, 'stats_year_combo'):
+                    year = int(self.stats_year_combo.get())
+                    start_date = datetime(year, 1, 1)
+                    end_date = datetime(year+1, 1, 1) - timedelta(seconds=1)
+                else:
+                    # Если нет выбора, берем текущий год
+                    today = datetime.now()
+                    start_date = datetime(today.year, 1, 1)
+                    end_date = datetime(today.year+1, 1, 1) - timedelta(seconds=1)
             
             if start_date:
+                self.logger.info(f"Период {period}: с {start_date} по {end_date}")
                 return (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                        end_date.strftime('%Y-%m-%d %H:%M:%S'))
             
@@ -3393,7 +3440,9 @@ class InternetSpeedMonitor:
         try:
             import matplotlib.pyplot as plt
             import gc
-            
+            from datetime import datetime, timedelta
+            import sqlite3            
+           
             # КРИТИЧЕСКИ ВАЖНО: закрываем все старые фигуры matplotlib
             plt.close('all')
             gc.collect()
@@ -3408,24 +3457,30 @@ class InternetSpeedMonitor:
             
             # ========== ИСПРАВЛЕННЫЙ БЛОК ДЛЯ ПЕРИОДА "ДЕНЬ" ==========
             if period == "День":
+                self.logger.info("ДИАГНОСТИКА: Начало обработки периода ДЕНЬ")
+                
                 # Выбранная дата
                 if hasattr(self, 'graph_date_picker'):
                     selected_date = self.graph_date_picker.get_date()
                     start_date = datetime(selected_date.year, selected_date.month, selected_date.day, 0, 0, 0)
                     end_date = datetime(selected_date.year, selected_date.month, selected_date.day, 23, 59, 59)
                     
-                    # !!! ВАЖНО: для дня используем GROUP BY по часам, чтобы уменьшить количество точек
+                  
+                    # Проверяем, есть ли данные за этот день
+                    check_cursor = conn.cursor()
+                    check_cursor.execute('''
+                        SELECT COUNT(*) FROM speed_measurements 
+                        WHERE timestamp BETWEEN ? AND ?
+                    ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
+                          end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                    day_count = check_cursor.fetchone()[0]
+                    
+                    # ВЫПОЛНЯЕМ ОСНОВНОЙ ЗАПРОС
                     cursor.execute('''
-                        SELECT 
-                            strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
-                            AVG(download_speed) as avg_download,
-                            AVG(upload_speed) as avg_upload,
-                            AVG(ping) as avg_ping,
-                            AVG(jitter) as avg_jitter
+                        SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
-                        GROUP BY hour
-                        ORDER BY hour
+                        ORDER BY timestamp
                     ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
                     
@@ -3435,20 +3490,44 @@ class InternetSpeedMonitor:
                     # Если нет выбора даты, берем последние 24 часа
                     start_date = datetime.now() - timedelta(days=1)
                     end_date = datetime.now()
+                    
                     cursor.execute('''
-                        SELECT 
-                            strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
-                            AVG(download_speed) as avg_download,
-                            AVG(upload_speed) as avg_upload,
-                            AVG(ping) as avg_ping,
-                            AVG(jitter) as avg_jitter
+                        SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
-                        GROUP BY hour
-                        ORDER BY hour
+                        ORDER BY timestamp
                     ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
-            # ========== КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ==========
+                
+                # Получаем данные
+                data = cursor.fetchall()
+                
+                # ПРОВЕРКА: есть ли данные за выбранный день?
+                if not data:
+                    self.logger.warning("ДИАГНОСТИКА: НЕТ ДАННЫХ за выбранный день!")
+                    
+                    # Показываем все даты в БД для диагностики
+                    try:
+                        debug_cursor = conn.cursor()
+                        debug_cursor.execute('''
+                            SELECT DISTINCT date(timestamp) as day, COUNT(*) as cnt
+                            FROM speed_measurements 
+                            GROUP BY day
+                            ORDER BY day
+                        ''')
+                        all_days = debug_cursor.fetchall()
+                    except:
+                        pass
+                    
+                    ax = self.fig.add_subplot(111)
+                    ax.text(0.5, 0.5, 'Нет данных за выбранный день', 
+                           ha='center', va='center', transform=ax.transAxes)
+                    self.canvas.draw()
+                    gc.collect()
+                    self._updating_graph = False
+                    return
+
+            # ========== КОНЕЦ БЛОКА ДЛЯ ПЕРИОДА "ДЕНЬ" ==========
                     
             elif period == "Неделя":
                 # Выбранная неделя
@@ -3485,6 +3564,9 @@ class InternetSpeedMonitor:
                         ORDER BY timestamp
                     ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                
+                # Получаем данные
+                data = cursor.fetchall()
                     
             elif period == "Месяц":
                 # Выбранный месяц (цифрой)
@@ -3517,6 +3599,9 @@ class InternetSpeedMonitor:
                         ORDER BY timestamp
                     ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                
+                # Получаем данные
+                data = cursor.fetchall()
                     
             else:  # Все время
                 start_date = datetime.now() - timedelta(days=36500)  # 100 лет
@@ -3528,12 +3613,16 @@ class InternetSpeedMonitor:
                     ORDER BY timestamp
                 ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                       end_date.strftime('%Y-%m-%d %H:%M:%S')))
+                
+                # Получаем данные
+                data = cursor.fetchall()
             
-            # Получаем данные
-            data = cursor.fetchall()
+            # Закрываем соединение
             conn.close()
             
+            # Общая проверка наличия данных
             if not data:
+                self.logger.warning(f"ДИАГНОСТИКА: Нет данных за выбранный период {period}")
                 ax = self.fig.add_subplot(111)
                 ax.text(0.5, 0.5, 'Нет данных за выбранный период', 
                        ha='center', va='center', transform=ax.transAxes)
@@ -3544,34 +3633,28 @@ class InternetSpeedMonitor:
                 self._updating_graph = False
                 return
           
-            # Подготавливаем данные (для Дня они уже в агрегированном виде)
-            if period == "День":
-                # Для дня данные уже сгруппированы по часам
-                timestamps = [datetime.strptime(row[0], '%Y-%m-%d %H:00:00') for row in data]
-                download_speeds = [row[1] for row in data]
-                upload_speeds = [row[2] for row in data]
-                pings = [row[3] for row in data]
-                jitters = [row[4] for row in data]
-            else:
-                # Для остальных периодов - как обычно
-                timestamps = [row[0] for row in data]
-                download_speeds = [row[1] for row in data]
-                upload_speeds = [row[2] for row in data]
-                pings = [row[3] for row in data]
-                jitters = [row[4] for row in data]
-                
-                # Преобразуем строки времени в datetime
-                if isinstance(timestamps[0], str):
-                    try:
-                        timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S.%f') for ts in timestamps]
-                    except ValueError:
-                        timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
+            # Подготавливаем данные
+            timestamps = [row[0] for row in data]
+            download_speeds = [row[1] for row in data]
+            upload_speeds = [row[2] for row in data]
+            pings = [row[3] for row in data]
+            jitters = [row[4] for row in data]
             
-            # Фильтруем N/A значения (None, 0 или пустые) для всех метрик
-            download_valid = [(t, v) for t, v in zip(timestamps, download_speeds) if v and v > 0]
-            upload_valid = [(t, v) for t, v in zip(timestamps, upload_speeds) if v and v > 0]
-            ping_valid_all = [(t, v) for t, v in zip(timestamps, pings) if v and v > 0]
-            jitter_valid_all = [(t, v) for t, v in zip(timestamps, jitters) if v and v >= 0]
+            # Преобразуем строки времени в datetime
+            if timestamps and isinstance(timestamps[0], str):
+                try:
+                    timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S.%f') for ts in timestamps]
+                except ValueError:
+                    try:
+                        timestamps = [datetime.strptime(ts, '%Y-%m-%d %H:%M:%S') for ts in timestamps]
+                    except:
+                        self.logger.error(f"ДИАГНОСТИКА: Не удалось преобразовать даты: {timestamps[:2]}")
+            
+            # Фильтруем N/A значения (разрешаем 0)
+            download_valid = [(t, v) for t, v in zip(timestamps, download_speeds) if v is not None]
+            upload_valid = [(t, v) for t, v in zip(timestamps, upload_speeds) if v is not None]
+            ping_valid_all = [(t, v) for t, v in zip(timestamps, pings) if v is not None]
+            jitter_valid_all = [(t, v) for t, v in zip(timestamps, jitters) if v is not None]
             
             # Вычисляем средние для всех метрик (используем все валидные данные)
             avg_download = sum(v for _, v in download_valid) / len(download_valid) if download_valid else 0
@@ -3610,7 +3693,18 @@ class InternetSpeedMonitor:
                 jitter_ts, jitter_vals = zip(*jitter_valid)
             else:
                 jitter_ts, jitter_vals = [], []
-           
+
+            # Проверяем, есть ли хоть какие-то данные
+            if not download_valid and not upload_valid and not ping_valid_all and not jitter_valid_all:
+                self.fig.clear()
+                ax = self.fig.add_subplot(111)
+                ax.text(0.5, 0.5, 'Нет данных для отображения', 
+                       ha='center', va='center', transform=ax.transAxes)
+                self.canvas.draw()
+                gc.collect()
+                self._updating_graph = False
+                return
+
             # Очищаем фигуру перед созданием новых графиков
             self.fig.clear()
             
@@ -3645,20 +3739,25 @@ class InternetSpeedMonitor:
             ax1.grid(True, alpha=0.3)
             ax1.tick_params(axis='both', labelsize=label_fontsize)
             
+           
             # Форматируем ось X в зависимости от выбранного периода
             import matplotlib.dates as mdates
+            from matplotlib.ticker import MaxNLocator
             
             if period == "День":
                 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                ax1.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+                ax1.xaxis.set_major_locator(MaxNLocator(10))
                 ax1.tick_params(axis='x', rotation=45)
             else:
                 # Для остальных периодов показываем дату
                 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
+                # ВАЖНО: добавляем ограничение тиков для всех периодов
+                ax1.xaxis.set_major_locator(MaxNLocator(10))
                 if period == "Неделя":
-                    ax1.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+                    # Можно оставить DayLocator, но с ограничением
+                    ax1.xaxis.set_major_locator(MaxNLocator(7))
                 elif period == "Месяц":
-                    ax1.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+                    ax1.xaxis.set_major_locator(MaxNLocator(10))
                 ax1.tick_params(axis='x', rotation=45)
             
             # График пинга и джиттера
@@ -3687,14 +3786,15 @@ class InternetSpeedMonitor:
             # Форматируем ось X для второго графика
             if period == "День":
                 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                ax2.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+                ax2.xaxis.set_major_locator(MaxNLocator(10))
                 ax2.tick_params(axis='x', rotation=45)
             else:
                 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
+                ax2.xaxis.set_major_locator(MaxNLocator(10))
                 if period == "Неделя":
-                    ax2.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+                    ax2.xaxis.set_major_locator(MaxNLocator(7))
                 elif period == "Месяц":
-                    ax2.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+                    ax2.xaxis.set_major_locator(MaxNLocator(10))
                 ax2.tick_params(axis='x', rotation=45)
             
             # Автоматическое форматирование дат
@@ -3724,6 +3824,7 @@ class InternetSpeedMonitor:
         finally:
             self._updating_graph = False
 # endregion
+
 
     def export_graph(self):
         """Экспорт графика в PNG"""
