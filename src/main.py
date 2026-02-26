@@ -3958,6 +3958,30 @@ class InternetSpeedMonitor:
                 conn.commit()
                 conn.close()
                 
+                # СБРАСЫВАЕМ ПОКАЗАНИЯ НА ВКЛАДКЕ МОНИТОРИНГ
+                self.download_var.set("0 Mbps")
+                self.upload_var.set("0 Mbps")
+                self.ping_var.set("0 ms")
+                self.jitter_var.set("0 ms")
+                self.last_check_var.set("Никогда")
+                
+                # Сбрасываем информацию о подключении
+                self.provider_var.set("—")
+                self.connection_type_var.set("—")
+                self.server_info_var.set("—")
+                self.ip_address_var.set("—")
+                
+                # Сбрасываем цвета (если были красными)
+                self.download_label.config(foreground='black')
+                self.upload_label.config(foreground='black')
+                self.ping_label.config(foreground='black')
+                self.jitter_label.config(foreground='black')
+                
+                # Сбрасываем индикатор тарифа
+                if hasattr(self, 'planned_speed_indicator'):
+                    self.planned_speed_indicator.config(text="")
+                
+                # Обновляем журнал и графики
                 self.update_log()
                 self.update_graph()
                 
@@ -3968,7 +3992,6 @@ class InternetSpeedMonitor:
             except Exception as e:
                 self.logger.error(f"Ошибка очистки журнала: {e}")
                 messagebox.showerror("Ошибка", f"Не удалось очистить журнал: {e}")
-
 
     def show_window(self):
         """Показать окно из трея"""
