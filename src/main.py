@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 import threading
 import time
 import json
@@ -24,6 +24,10 @@ from datetime import datetime
 import sqlite3
 import sys
 import traceback
+# Импорт модуля лицензий
+import license
+from license import show_premium_dialog, LicenseManager
+import webbrowser
 
 # Настройка кодировки для EXE
 if hasattr(sys, 'frozen'):
@@ -279,6 +283,10 @@ class InternetSpeedMonitor:
         # === ОЧИСТКА ИСТОРИИ ===
         self.clean_enabled_var = tk.BooleanVar(value=True)
         self.auto_clean_days_var = tk.IntVar(value=90)  # 90 дней по умолчанию
+
+        # === ПРЕМИУМ-ФУНКЦИИ ===
+        self.premium_export = tk.BooleanVar(value=False)  # Статус активации экспорта
+        # =========================
 
         # Создание интерфейса
         self.create_widgets()
@@ -1479,7 +1487,15 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка обновления меню трея: {e}")
-          
+
+    def show_premium_status(self):
+        """Показать статус премиум-функций"""
+        if self.premium_export.get():
+            msg = "✅ Премиум-доступ активирован\n\nФункция экспорта в CSV доступна."
+        else:
+            msg = "❌ Премиум-доступ не активирован\n\nДля активации используйте экспорт CSV и введите ключ."
+        
+        messagebox.showinfo("Статус премиум", msg)          
 
     def create_icon(self):
         """Создание простой иконки если файла нет"""
@@ -2582,16 +2598,30 @@ class InternetSpeedMonitor:
         ttk.Button(clean_frame, text="🗑️ Очистить сейчас", 
                   command=self.manual_clean_old).pack(anchor='w', pady=5)
 
-        # === НИЖНИЙ БЛОК: ИНФОРМАЦИЯ О ПРОГРАММЕ ===
+        # === ИНФОРМАЦИЯ О ПРОГРАММЕ ===
         info_frame = ttk.LabelFrame(settings_frame, text="Информация", padding=10)
-        info_frame.grid(row=4, column=0, columnspan=1, sticky='ew', pady=15)
+        info_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=15)
         
+        # Название и версия
         version_text = f"SpeedWatch v{__version__}"
         ttk.Label(info_frame, text=version_text, font=self.scale_font('Arial', 12) + ('bold',)).pack()
+        
+        # Описание
         ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения", 
                  font=self.scale_font('Arial', 9)).pack()
+        
+        # Статус премиум-функций
+        premium_text = "✓ Премиум: Экспорт CSV " + ("активирован" if self.premium_export.get() else "не активирован")
+        premium_color = "green" if self.premium_export.get() else "orange"
+        
+        premium_label = ttk.Label(info_frame, text=premium_text, 
+                                  font=self.scale_font('Arial', 9), 
+                                  foreground=premium_color)
+        premium_label.pack(pady=(5, 0))
+        
+        # Год
         ttk.Label(info_frame, text=f"© {datetime.now().year}", 
-                 font=self.scale_font('Arial', 8)).pack()
+                 font=self.scale_font('Arial', 8)).pack(pady=(5, 0))
 
 
     def create_tray_icon(self):
@@ -2710,27 +2740,12 @@ class InternetSpeedMonitor:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-
-            # Проверяем, есть ли вообще настройки
-            cursor.execute("SELECT COUNT(*) FROM settings")
-            settings_count = cursor.fetchone()[0]
             
-            # Если настроек нет - это первый запуск
-            if settings_count == 0:
-                self.is_first_load = True
-                self.logger.info("Первый запуск программы")
-            else:
-                self.is_first_load = False
-
-            # Загружаем интервал
             cursor.execute("SELECT value FROM settings WHERE key='interval'")
             result = cursor.fetchone()
             if result:
                 self.interval_var.set(int(result[0]))
-            else:
-                self.interval_var.set(60)  # значение по умолчанию
 
-            # Загружаем заявленную скорость
             cursor.execute("SELECT value FROM settings WHERE key='planned_speed'")
             result = cursor.fetchone()
             if result:
@@ -2738,73 +2753,58 @@ class InternetSpeedMonitor:
             else:
                 self.planned_speed_var.set(100)
 
-            # Загружаем пороги
+            # === НАСТРАИВАЕМЫЕ ПОРОГИ ===
             cursor.execute("SELECT value FROM settings WHERE key='download_threshold'")
             result = cursor.fetchone()
             if result:
                 self.download_threshold_var.set(int(result[0]))
-            else:
-                self.download_threshold_var.set(25)
             
             cursor.execute("SELECT value FROM settings WHERE key='ping_threshold'")
             result = cursor.fetchone()
             if result:
                 self.ping_threshold_var.set(int(result[0]))
-            else:
-                self.ping_threshold_var.set(100)
             
             cursor.execute("SELECT value FROM settings WHERE key='jitter_threshold'")
             result = cursor.fetchone()
             if result:
                 self.jitter_threshold_var.set(int(result[0]))
-            else:
-                self.jitter_threshold_var.set(15)
             
             cursor.execute("SELECT value FROM settings WHERE key='jitter_frequency'")
             result = cursor.fetchone()
             if result:
                 self.jitter_frequency_var.set(int(result[0]))
-            else:
-                self.jitter_frequency_var.set(30)
+            # ===========================
 
-            # Загружаем настройки очистки
+            # === НАСТРОЙКИ ОЧИСТКИ ===
             cursor.execute("SELECT value FROM settings WHERE key='clean_enabled'")
             result = cursor.fetchone()
             if result:
                 self.clean_enabled_var.set(result[0] == '1')
-            else:
-                self.clean_enabled_var.set(True)
             
             cursor.execute("SELECT value FROM settings WHERE key='clean_days'")
             result = cursor.fetchone()
             if result:
                 self.auto_clean_days_var.set(int(result[0]))
-            else:
-                self.auto_clean_days_var.set(90)
+            # ========================
 
-            # Загружаем автозапуск
+            # === ПРЕМИУМ-СТАТУС ===
+            cursor.execute("SELECT value FROM settings WHERE key='premium_export'")
+            result = cursor.fetchone()
+            if result:
+                self.premium_export.set(result[0] == '1')
+            else:
+                self.premium_export.set(False)
+            # ======================
+
             cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
             result = cursor.fetchone()
             if result:
                 self.auto_start_var.set(result[0] == '1')
-            else:
-                # Для EXE режима автозапуск включен по умолчанию
-                if getattr(sys, 'frozen', False):
-                    self.auto_start_var.set(True)
-                else:
-                    self.auto_start_var.set(False)
             
-            # Загружаем настройку трея
             cursor.execute("SELECT value FROM settings WHERE key='minimize_to_tray'")
             result = cursor.fetchone()
             if result:
                 self.minimize_to_tray_var.set(result[0] == '1')
-            else:
-                # Для EXE режима сворачивание в трей ОТКЛЮЧЕНО по умолчанию
-                if getattr(sys, 'frozen', False):
-                    self.minimize_to_tray_var.set(False)
-                else:
-                    self.minimize_to_tray_var.set(True)
             
             conn.close()
         except Error as e:
@@ -3935,67 +3935,100 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
 
-# region ### Можно осторожно менять
+
     def export_log(self):
-        """Экспорт журнала в CSV (сырые данные из БД)"""
+        """Экспорт журнала в CSV (премиум-функция)"""
+        try:
+            # Проверяем, активирован ли премиум-доступ
+            if not self.premium_export.get():
+                # Показываем диалог активации
+                show_premium_dialog(self.root, self._do_export_log)
+                return
+            
+            # Если уже активирован - сразу выполняем экспорт
+            self._do_export_log(None)
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка в export_log: {e}")
+            messagebox.showerror("Ошибка", f"Ошибка: {e}")
+
+    def _do_export_log(self, license_key):
+        """Фактическое выполнение экспорта (после активации)"""
         try:
             filename = filedialog.asksaveasfilename(
                 defaultextension=".csv",
                 filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-                initialfile=f"internet_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                initialfile=f"speedwatch_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             )
             
-            if filename:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server FROM speed_measurements ORDER BY timestamp DESC')
-                rows = cursor.fetchall()
-                conn.close()
+            if not filename:
+                return
                 
-                import csv
-                with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(['ID', 'Timestamp', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)', 'Jitter (ms)', 'Server'])
+            # Если пришел ключ - активируем премиум навсегда
+            if license_key:
+                self.premium_export.set(True)
+                # Можно сохранить статус в настройках
+                self._save_premium_status()
+            
+            # Здесь весь существующий код экспорта из export_log
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server FROM speed_measurements ORDER BY timestamp DESC')
+            rows = cursor.fetchall()
+            conn.close()
+            
+            import csv
+            with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f)
+                writer.writerow(['ID', 'Timestamp', 'Download (Mbps)', 'Upload (Mbps)', 'Ping (ms)', 'Jitter (ms)', 'Server'])
+                
+                for row in rows:
+                    # Форматируем дату
+                    timestamp = row[1]
+                    if timestamp and isinstance(timestamp, str):
+                        try:
+                            dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                            formatted_timestamp = dt.strftime('%d-%m-%Y %H:%M:%S')
+                        except:
+                            formatted_timestamp = timestamp
+                    else:
+                        formatted_timestamp = str(timestamp) if timestamp else ""
                     
-                    for row in rows:
-                        # Форматируем дату из "YYYY-MM-DD HH:MM:SS.ffffff" в "dd-mm-yyyy HH:MM:SS"
-                        timestamp = row[1]
-                        if timestamp and isinstance(timestamp, str):
-                            try:
-                                dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
-                                formatted_timestamp = dt.strftime('%d-%m-%Y %H:%M:%S')
-                            except:
-                                formatted_timestamp = timestamp
-                        else:
-                            formatted_timestamp = str(timestamp) if timestamp else ""
-                        
-                        # Форматируем значения
-                        download = f"{row[2]:.2f}" if row[2] is not None else ""
-                        upload = f"{row[3]:.2f}" if row[3] is not None else ""
-                        ping = f"{row[4]:.1f}" if row[4] is not None else ""
-                        jitter = f"{row[5]:.1f}" if row[5] is not None else ""
-                        server = row[6] or ""
-                        
-                        formatted_row = (
-                            row[0],
-                            formatted_timestamp,
-                            download,
-                            upload,
-                            ping,
-                            jitter,
-                            server
-                        )
-                        
-                        writer.writerow(formatted_row)
-                
-                self.status_var.set(f"Журнал экспортирован: {filename}")
-                self.logger.info(f"Журнал экспортирован в {filename}")
-                messagebox.showinfo("Успех", f"Журнал сохранен в файл:\n{filename}")
+                    # Форматируем значения
+                    download = f"{row[2]:.2f}" if row[2] is not None else ""
+                    upload = f"{row[3]:.2f}" if row[3] is not None else ""
+                    ping = f"{row[4]:.1f}" if row[4] is not None else ""
+                    jitter = f"{row[5]:.1f}" if row[5] is not None else ""
+                    server = row[6] or ""
+                    
+                    formatted_row = (row[0], formatted_timestamp, download, upload, ping, jitter, server)
+                    writer.writerow(formatted_row)
+            
+            self.status_var.set(f"Журнал экспортирован: {filename}")
+            self.logger.info(f"Журнал экспортирован в {filename}")
+            messagebox.showinfo("Успех", f"Журнал сохранен в файл:\n{filename}")
+            
+            if license_key:
+                messagebox.showinfo("Активация", 
+                                   "✅ Премиум-доступ активирован!\n\n"
+                                   "Теперь функция экспорта всегда доступна.")
                 
         except Exception as e:
             self.logger.error(f"Ошибка экспорта журнала: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
-# endregion
+
+    def _save_premium_status(self):
+        """Сохранение статуса премиум-активации в настройках"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('premium_export', '1' if self.premium_export.get() else '0'))
+            conn.commit()
+            conn.close()
+            self.logger.info("Статус премиум-доступа сохранен")
+        except Exception as e:
+            self.logger.error(f"Ошибка сохранения статуса премиум: {e}")
 
     def clear_log(self):
         """Очистка журнала"""
