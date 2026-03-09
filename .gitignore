@@ -6,6 +6,9 @@ __pycache__/
 venv/
 .venv/
 
+generate_key.py
+issued_keys.json
+
 # === Системные файлы Python ===
 __pycache__/
 *.py[cod]
