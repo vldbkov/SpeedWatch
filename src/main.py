@@ -2807,6 +2807,11 @@ class InternetSpeedMonitor:
                 self.minimize_to_tray_var.set(result[0] == '1')
             
             conn.close()
+            
+            # После загрузки всех настроек обновляем вкладку настроек
+            if hasattr(self, 'settings_frame'):
+                self._refresh_settings_tab()
+            
         except Error as e:
             self.logger.error(f"Ошибка загрузки настроек: {e}")
 
@@ -3967,10 +3972,12 @@ class InternetSpeedMonitor:
             # Если пришел ключ - активируем премиум навсегда
             if license_key:
                 self.premium_export.set(True)
-                # Можно сохранить статус в настройках
                 self._save_premium_status()
+                print(f"DEBUG: premium_export = {self.premium_export.get()}")  # Временная отладка
+                # ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ ВКЛАДКУ НАСТРОЕК
+                self._refresh_settings_tab()
             
-            # Здесь весь существующий код экспорта из export_log
+            # Здесь весь существующий код экспорта
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute('SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server FROM speed_measurements ORDER BY timestamp DESC')
@@ -4016,6 +4023,24 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка экспорта журнала: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
+
+    def _refresh_settings_tab(self):
+        """Обновление вкладки настроек"""
+        try:
+            print(f"DEBUG: _refresh_settings_tab started, premium_export = {self.premium_export.get()}")
+            
+            # Находим текущую вкладку настроек и удаляем её содержимое
+            for widget in self.settings_frame.winfo_children():
+                widget.destroy()
+            
+            # Пересоздаем вкладку настроек
+            self.setup_settings_tab()
+            
+            print("DEBUG: _refresh_settings_tab completed")
+            self.logger.info("Вкладка настроек обновлена после активации премиум")
+        except Exception as e:
+            print(f"DEBUG: Error in _refresh_settings_tab: {e}")
+            self.logger.error(f"Ошибка обновления вкладки настроек: {e}")
 
     def _save_premium_status(self):
         """Сохранение статуса премиум-активации в настройках"""
