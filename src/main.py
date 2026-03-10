@@ -2878,10 +2878,15 @@ class InternetSpeedMonitor:
         else:
             self.logger.info("Мониторинг не активен, интервал будет применен при следующем запуске")
         
-        # 2. ПРИМЕНИТЬ НАСТРОЙКУ АВТОЗАПУСКА
+        # 2. Применить настройку автозапуска
         self.update_autostart()
         
-        # 3. Обновить название в трее (если нужно)
+        # 3. ЕСЛИ АВТОЗАПУСК ВКЛЮЧЕН, НО МОНИТОРИНГ НЕ АКТИВЕН - ЗАПУСКАЕМ
+        if self.auto_start_var.get() and not self.running:
+            self.logger.info("Автозапуск включен - запускаем мониторинг")
+            self.root.after(1000, self.start_monitoring)
+        
+        # 4. Обновить название в трее (если нужно)
         if hasattr(self, 'tray_icon'):
             try:
                 self.tray_icon.title = "SpeedWatch - Мониторинг скорости"
