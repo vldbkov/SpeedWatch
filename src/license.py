@@ -1,13 +1,13 @@
 # license.py
+import tkinter as tk
+from tkinter import ttk, messagebox
+import webbrowser
 import hashlib
 import hmac
 import secrets
 from datetime import datetime
-import webbrowser
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
-
-
+import json
+import os
 
 class LicenseManager:
     """Управление лицензионными ключами"""
@@ -78,14 +78,11 @@ class LicenseManager:
     def _save_key_info(key: str, user: str):
         """Сохранение информации о выданном ключе"""
         try:
-            import json
-            import os
-            
             keys_file = "issued_keys.json"
             
             keys = []
             if os.path.exists(keys_file):
-                with open(keys_file, 'r') as f:
+                with open(keys_file, 'r', encoding='utf-8') as f:
                     keys = json.load(f)
             
             keys.append({
@@ -95,7 +92,7 @@ class LicenseManager:
                 'version': LicenseManager._VERSION
             })
             
-            with open(keys_file, 'w') as f:
+            with open(keys_file, 'w', encoding='utf-8') as f:
                 json.dump(keys, f, indent=2)
                 
             print(f"✅ Ключ {key} сохранен для {user}")
@@ -186,7 +183,6 @@ def show_premium_dialog(parent, callback):
             dialog.clipboard_append("vldbkov@gmail.com")
             
             # Показываем уведомление
-            from tkinter import messagebox
             messagebox.showinfo("Скопировано", 
                               "✅ Email скопирован!\n\n"
                               "Напишите нам\n"
