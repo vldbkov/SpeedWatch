@@ -1914,7 +1914,7 @@ class InternetSpeedMonitor:
         if self.premium_export.get():
             export_btn = ttk.Button(control_frame, text="Экспорт PNG", command=self.export_graph, width=12)
         else:
-            export_btn = tk.Button(control_frame, text="🌟PNG\nPremium",
+            export_btn = tk.Button(control_frame, text="🌟 Экспорт PNG\n(Premium)",
                                    command=self.export_graph,
                                    fg="#D4AF37",
                                    bg="#2C2C2C",
@@ -1922,7 +1922,7 @@ class InternetSpeedMonitor:
                                    activebackground="#3C3C3C",
                                    relief="solid",
                                    bd=1,
-                                   width=8,
+                                   width=13,
                                    height=2,
                                    font=('Arial', 8, 'bold'),
                                    cursor="hand2",
