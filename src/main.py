@@ -576,20 +576,19 @@ class InternetSpeedMonitor:
             if result:
                 timestamp = result[0]
                 # Форматируем дату из "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
-                try:
                 if timestamp and isinstance(timestamp, str):
                     try:
                         dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
                         return dt.strftime('%d.%m.%y %H:%M')
                     except:
                         return "Нет данных"
-                except:
+                else:
                     return "Нет данных"
             else:
                 return "Нет данных"
         except Exception as e:
             self.logger.error(f"Ошибка получения времени последнего измерения: {e}")
-            return "Нет данных"        
+            return "Нет данных"
 
     def get_external_ip_info(self):
         """Получить внешний IP и информацию о провайдере"""
