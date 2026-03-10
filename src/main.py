@@ -2006,7 +2006,7 @@ class InternetSpeedMonitor:
         if self.premium_export.get():
             export_csv_btn = ttk.Button(log_control_frame, text="Экспорт в CSV", command=self.export_log)
         else:
-            export_csv_btn = tk.Button(log_control_frame, text="📊 Экспорт в CSV (Premium)", 
+            export_csv_btn = tk.Button(log_control_frame, text="📊 Экспорт в CSV\n(Premium)", 
                                        command=self.export_log,
                                        fg="#D4AF37",
                                        bg="#2C2C2C",
