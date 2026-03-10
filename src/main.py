@@ -362,6 +362,32 @@ class InternetSpeedMonitor:
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
 
+    def get_db(self):
+        """Получение соединения с зашифрованной БД"""
+        try:
+            from encrypted_db import EncryptedDB
+            db = EncryptedDB(self.db_path)
+            db.connect()
+            return db
+        except Exception as e:
+            self.logger.error(f"Ошибка подключения к БД: {e}")
+            
+            # Проверяем, не пустой ли файл
+            if os.path.exists(self.db_path) and os.path.getsize(self.db_path) == 0:
+                messagebox.showerror(
+                    "Ошибка базы данных",
+                    "Файл базы данных пуст. Возможно, он был поврежден или создан вручную.\n"
+                    "Программа создаст новую базу при следующем запуске."
+                )
+                # Удаляем пустой файл
+                try:
+                    os.remove(self.db_path)
+                    self.logger.info("Пустой файл БД удален")
+                except Exception as rm_err:
+                    self.logger.error(f"Не удалось удалить пустой файл БД: {rm_err}")
+            
+            return None
+
     def check_database_migration(self):
         """Проверка необходимости миграции на зашифрованную БД"""
         try:
@@ -523,7 +549,6 @@ class InternetSpeedMonitor:
         """Масштабирует любое числовое значение в зависимости от DPI."""
         return int(value * self.dpi_scale)
 
-    ###
     def check_internet_connection(self):
         """Проверка наличия интернет-соединения"""
         try:
@@ -532,8 +557,7 @@ class InternetSpeedMonitor:
             return True
         except OSError:
             return False
-    ###     
-
+    
     def check_tray_icon(self):
         """Проверка что иконка трея запущена"""
         if not hasattr(self, 'tray_thread') or not self.tray_thread.is_alive():
