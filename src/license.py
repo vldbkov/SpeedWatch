@@ -188,9 +188,9 @@ def show_premium_dialog(parent, callback):
             # Показываем уведомление
             from tkinter import messagebox
             messagebox.showinfo("Скопировано", 
-                              "✅ Адрес vldbkov@gmail.com скопирован в буфер обмена.\n\n"
-                              "Вставьте его в вашу почту и напишите нам, "
-                              "и мы вышлем ключ активации.")
+                              "✅ Email скопирован!\n\n"
+                              "Напишите нам\n"
+                              "и мы пришлём вам ключ.")
         except Exception as e:
             print(f"Ошибка копирования: {e}")
     
