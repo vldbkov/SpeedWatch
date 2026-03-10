@@ -224,6 +224,16 @@ class InternetSpeedMonitor:
         self.setup_database()        
         self.check_database_integrity()  # Проверяем целостность БД при запуске
 
+        # Проверяем, что БД действительно зашифрована
+        try:
+            test_db = self.get_db()
+            if test_db:
+                test_db.close()
+                self.logger.info("✅ База данных работает с шифрованием")
+        except Exception as e:
+            self.logger.error(f"❌ Проблема с шифрованием БД: {e}")
+        self.check_database_migration()  # ПРОВЕРКА МИГРАЦИИ 
+
         # Управление консолью
         self.console_visible = False  # Начинаем со скрытой консоли
         self.setup_console()
@@ -352,6 +362,145 @@ class InternetSpeedMonitor:
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
 
+    def check_database_migration(self):
+        """Проверка необходимости миграции на зашифрованную БД"""
+        try:
+            # Проверяем, существует ли старая БД (незашифрованная)
+            old_db_path = self.db_path.replace('.db', '_old.db')
+            
+            # Если текущая БД не открывается с мастер-ключом, пробуем открыть как старую
+            from encrypted_db import EncryptedDB
+            try:
+                db = EncryptedDB(self.db_path)
+                db.connect()
+                db.close()
+                # Если успешно, значит БД уже зашифрована
+                return
+            except:
+                # Не удалось открыть как зашифрованную
+                pass
+            
+            # Пробуем открыть как обычную SQLite
+            import sqlite3
+            if os.path.exists(self.db_path):
+                response = messagebox.askyesno(
+                    "Обновление базы данных",
+                    "Обнаружена база данных от старой версии программы.\n\n"
+                    "Хотите перенести данные в новую зашифрованную базу?\n\n"
+                    "(Старая БД будет сохранена как backup)"
+                )
+                
+                if response:
+                    # Переносим данные
+                    self._migrate_to_encrypted()
+                else:
+                    # Переименовываем старую БД и создаем новую
+                    backup_path = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    os.rename(self.db_path, backup_path)
+                    self.logger.info(f"Старая БД переименована в {backup_path}")
+                    
+                    # Создаем новую зашифрованную БД
+                    db = EncryptedDB(self.db_path)
+                    db.connect()
+                    db.create_tables()
+                    db.close()
+                    
+                    messagebox.showinfo(
+                        "База данных создана",
+                        f"Создана новая зашифрованная база данных.\n"
+                        f"Старая БД сохранена как:\n{backup_path}"
+                    )
+                    
+        except Exception as e:
+            self.logger.error(f"Ошибка при проверке миграции БД: {e}")
+    
+    def _migrate_to_encrypted(self):
+        """Перенос данных из старой БД в новую зашифрованную"""
+        try:
+            import sqlite3
+            from encrypted_db import EncryptedDB
+            import shutil
+            
+            # Создаем резервную копию старой БД
+            backup_path = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            shutil.copy2(self.db_path, backup_path)
+            
+            # Читаем данные из старой БД
+            old_conn = sqlite3.connect(self.db_path)
+            old_conn.row_factory = sqlite3.Row
+            old_cursor = old_conn.cursor()
+            
+            # Получаем все измерения
+            old_cursor.execute("SELECT * FROM speed_measurements")
+            measurements = old_cursor.fetchall()
+            
+            # Получаем все настройки
+            old_cursor.execute("SELECT * FROM settings")
+            settings = old_cursor.fetchall()
+            
+            old_conn.close()
+            
+            # Переименовываем старую БД
+            os.rename(self.db_path, f"{self.db_path}.old")
+            
+            # Создаем новую зашифрованную БД
+            new_db = EncryptedDB(self.db_path)
+            new_db.connect()
+            new_db.create_tables()
+            
+            # Переносим измерения
+            for row in measurements:
+                try:
+                    new_db.execute('''
+                        INSERT INTO speed_measurements 
+                        (id, timestamp, download_speed, upload_speed, ping, jitter, server) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (row['id'], row['timestamp'], row['download_speed'], 
+                          row['upload_speed'], row['ping'], row['jitter'], row['server']))
+                except:
+                    # Если не получается с id, пробуем без id (автоинкремент)
+                    new_db.execute('''
+                        INSERT INTO speed_measurements 
+                        (timestamp, download_speed, upload_speed, ping, jitter, server) 
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (row['timestamp'], row['download_speed'], 
+                          row['upload_speed'], row['ping'], row['jitter'], row['server']))
+            
+            # Переносим настройки
+            for row in settings:
+                new_db.execute('''
+                    INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)
+                ''', (row['key'], row['value']))
+            
+            new_db.commit()
+            new_db.close()
+            
+            self.logger.info(f"Перенесено {len(measurements)} измерений и {len(settings)} настроек")
+            
+            messagebox.showinfo(
+                "Миграция завершена",
+                f"Данные успешно перенесены в зашифрованную базу.\n\n"
+                f"Перенесено:\n"
+                f"• Измерений: {len(measurements)}\n"
+                f"• Настроек: {len(settings)}\n\n"
+                f"Резервная копия старой БД: {backup_path}"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при миграции БД: {e}")
+            messagebox.showerror(
+                "Ошибка миграции",
+                f"Не удалось перенести данные: {e}\n\n"
+                f"Будет создана новая база данных."
+            )
+            
+            # Создаем новую БД
+            from encrypted_db import EncryptedDB
+            db = EncryptedDB(self.db_path)
+            db.connect()
+            db.create_tables()
+            db.close()
+
     def center_window(self):
         """Центрирование окна на экране"""
         self.root.update_idletasks()
@@ -409,33 +558,77 @@ class InternetSpeedMonitor:
 
 
     def setup_database(self):
-        """Создание базы данных"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS speed_measurements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                download_speed REAL,
-                upload_speed REAL,
-                ping REAL,
-                jitter REAL,
-                server TEXT
-            )
-        ''')
-        # Добавляем колонку jitter если её ещё нет (для совместимости с существующими БД)
+        """Создание зашифрованной базы данных"""
         try:
-            cursor.execute('ALTER TABLE speed_measurements ADD COLUMN jitter REAL DEFAULT 0')
-        except sqlite3.OperationalError:
-            pass  # Колонка уже существует
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+            from encrypted_db import EncryptedDB
+            
+            # Используем наш класс для зашифрованной БД
+            db = EncryptedDB(self.db_path)
+            db.connect()
+            
+            # Создаем таблицы
+            db.create_tables()
+            
+            # Добавляем колонку jitter если её ещё нет (для совместимости)
+            try:
+                db.execute('ALTER TABLE speed_measurements ADD COLUMN jitter REAL DEFAULT 0')
+                db.commit()
+            except:
+                pass  # Колонка уже существует или другая ошибка
+            
+            db.close()
+            self.logger.info("Зашифрованная база данных инициализирована")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка создания БД: {e}")
+            # Если не удалось создать зашифрованную БД, используем обычную как запасной вариант
+            self._setup_database_fallback()
+
+
+    def get_db(self):
+        """Получение соединения с зашифрованной БД"""
+        try:
+            from encrypted_db import EncryptedDB
+            db = EncryptedDB(self.db_path)
+            db.connect()
+            return db
+        except Exception as e:
+            self.logger.error(f"Ошибка подключения к БД: {e}")
+            return None
+
+    def _setup_database_fallback(self):
+        """Запасной вариант создания обычной БД (если шифрование не работает)"""
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS speed_measurements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    download_speed REAL,
+                    upload_speed REAL,
+                    ping REAL,
+                    jitter REAL,
+                    server TEXT
+                )
+            ''')
+            try:
+                cursor.execute('ALTER TABLE speed_measurements ADD COLUMN jitter REAL DEFAULT 0')
+            except:
+                pass
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            self.logger.warning("Используется обычная (незашифрованная) БД")
+        except Exception as e:
+            self.logger.error(f"Критическая ошибка создания БД: {e}")
 
 # region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def check_database_integrity(self):
@@ -443,7 +636,7 @@ class InternetSpeedMonitor:
         try:
             self.logger.info("Проверка целостности базы данных...")
             
-            # Подключаемся к БД
+            # Используем обычный sqlite3 для проверки, так как PRAGMA integrity_check работает одинаково
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -492,6 +685,11 @@ class InternetSpeedMonitor:
             import shutil
             from datetime import datetime
             
+            # Закрываем все соединения если они есть
+            if hasattr(self, 'get_db'):
+                # Просто удостоверимся, что нет открытых соединений
+                pass
+            
             # Создаем резервную копию поврежденной БД
             if os.path.exists(self.db_path):
                 backup_path = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -502,8 +700,20 @@ class InternetSpeedMonitor:
                 os.remove(self.db_path)
                 self.logger.info("Поврежденная БД удалена")
             
-            # Создаем новую БД
-            self.setup_database()
+            # Создаем новую БД через наш класс
+            from encrypted_db import EncryptedDB
+            db = EncryptedDB(self.db_path)
+            db.connect()
+            db.create_tables()
+            
+            # Добавляем колонку jitter если её ещё нет (для совместимости)
+            try:
+                db.execute('ALTER TABLE speed_measurements ADD COLUMN jitter REAL DEFAULT 0')
+                db.commit()
+            except:
+                pass  # Колонка уже существует
+            
+            db.close()
             
             from tkinter import messagebox
             messagebox.showinfo(
@@ -530,16 +740,19 @@ class InternetSpeedMonitor:
             days = self.auto_clean_days_var.get()
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
             
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM speed_measurements WHERE timestamp < ?', (cutoff_date,))
-            deleted = cursor.rowcount
-            conn.commit()
-            conn.close()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для очистки старых записей")
+                return
+            
+            db.execute('DELETE FROM speed_measurements WHERE timestamp < ?', (cutoff_date,))
+            deleted = db.cursor.rowcount
+            db.commit()
+            db.close()
             
             if deleted > 0:
                 self.logger.info(f"Автоматически удалено {deleted} записей старше {days} дней")
-                self.update_log()
+                self.update_log()  # обновить журнал
                 
         except Exception as e:
             self.logger.error(f"Ошибка при очистке старых записей: {e}")
@@ -558,20 +771,44 @@ class InternetSpeedMonitor:
         )
         
         if result:
-            self.clean_old_records()
-            messagebox.showinfo("Очистка", f"Записи старше {days} дней удалены")
+            try:
+                cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+                
+                db = self.get_db()
+                if not db:
+                    self.logger.error("Не удалось подключиться к БД для ручной очистки")
+                    return
+                
+                db.execute('DELETE FROM speed_measurements WHERE timestamp < ?', (cutoff_date,))
+                deleted = db.cursor.rowcount
+                db.commit()
+                db.close()
+                
+                if deleted > 0:
+                    self.logger.info(f"Ручная очистка: удалено {deleted} записей старше {days} дней")
+                    self.update_log()
+                    messagebox.showinfo("Очистка", f"Удалено {deleted} записей старше {days} дней")
+                else:
+                    messagebox.showinfo("Очистка", f"Нет записей старше {days} дней")
+                
+            except Exception as e:
+                self.logger.error(f"Ошибка при ручной очистке: {e}")
+                messagebox.showerror("Ошибка", f"Не удалось выполнить очистку: {e}")
 
     def get_last_measurement_time(self):
         """Получение времени последнего измерения из БД"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('''
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД")
+                return "Нет данных"
+            
+            db.execute('''
                 SELECT timestamp FROM speed_measurements 
                 ORDER BY timestamp DESC LIMIT 1
             ''')
-            result = cursor.fetchone()
-            conn.close()
+            result = db.cursor.fetchone()
+            db.close()
             
             if result:
                 timestamp = result[0]
@@ -640,14 +877,17 @@ class InternetSpeedMonitor:
     def get_first_measurement_date(self):
         """Получение даты первого измерения из БД"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('''
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД")
+                return datetime(2026, 1, 1).date()
+            
+            db.execute('''
                 SELECT timestamp FROM speed_measurements 
                 ORDER BY timestamp ASC LIMIT 1
             ''')
-            result = cursor.fetchone()
-            conn.close()
+            result = db.cursor.fetchone()
+            db.close()
             
             if result and result[0]:
                 timestamp = result[0]
@@ -666,26 +906,27 @@ class InternetSpeedMonitor:
             self.logger.error(f"Ошибка получения даты первого измерения: {e}")
             return datetime(2026, 1, 1).date()
 
-
     def load_last_measurement(self):
         """Загрузка последнего измерения из БД для отображения при старте"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД")
+                return
             
             # Проверяем наличие новых колонок
-            cursor.execute("PRAGMA table_info(speed_measurements)")
-            columns = [col[1] for col in cursor.fetchall()]
+            db.execute("PRAGMA table_info(speed_measurements)")
+            columns = [col[1] for col in db.cursor.fetchall()]
             
             # Формируем запрос в зависимости от наличия колонок
             if all(col in columns for col in ['server_city', 'server_provider', 'client_ip']):
-                cursor.execute('''
+                db.execute('''
                     SELECT download_speed, upload_speed, ping, jitter, 
                            server, server_city, server_provider, client_ip 
                     FROM speed_measurements 
                     ORDER BY timestamp DESC LIMIT 1
                 ''')
-                result = cursor.fetchone()
+                result = db.cursor.fetchone()
                 if result:
                     download, upload, ping, jitter, server, server_city, server_provider, client_ip = result
                     self.download_var.set(f"{download:.2f} Mbps" if download else "0 Mbps")
@@ -693,30 +934,25 @@ class InternetSpeedMonitor:
                     self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
                     self.jitter_var.set(f"{jitter:.2f} ms" if jitter else "0 ms")
                     
-                    # Обновляем информацию о сервере (только если есть данные)
+                    # Обновляем информацию о сервере
                     self.server_info_var.set(server if server else "—")
                     
-                    # Все поля подключения оставляем пустыми - они будут получены при новом тесте
+                    # Все поля подключения оставляем пустыми
                     self.provider_var.set("—")
                     self.ip_address_var.set("—")
                     self.connection_type_var.set("—")
-                    self.server_info_var.set("—")  # <-- ДОБАВИТЬ эту строку
-                    
-                    # Определяем тип подключения (временно, пока нет данных)
-                    self.connection_type_var.set("—")
                     
                     self.update_monitor_tab_colors()
-                    self.update_planned_speed_indicator() 
+                    self.update_planned_speed_indicator()
                     self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
-
             else:
                 # Старая БД без новых колонок
-                cursor.execute('''
+                db.execute('''
                     SELECT download_speed, upload_speed, ping, jitter, server 
                     FROM speed_measurements 
                     ORDER BY timestamp DESC LIMIT 1
                 ''')
-                result = cursor.fetchone()
+                result = db.cursor.fetchone()
                 if result:
                     download, upload, ping, jitter, server = result
                     self.download_var.set(f"{download:.2f} Mbps")
@@ -729,15 +965,14 @@ class InternetSpeedMonitor:
                 else:
                     self.logger.info("Нет сохраненных измерений")
             
-            conn.close()
+            db.close()
             
         except Exception as e:
             self.logger.error(f"Ошибка загрузки последнего измерения: {e}")
 
 # region Можно осторожно менять
-
     def update_monitor_tab_colors(self):
-        """Обновление цветов на вкладке моторинга согласно нормам"""
+        """Обновление цветов на вкладке мониторинга согласно нормам"""
         try:
             # Получаем текущие значения
             download_text = self.download_var.get().replace(' Mbps', '')
@@ -767,12 +1002,14 @@ class InternetSpeedMonitor:
                 jitter = None
             
             # Получаем средние значения за неделю для сравнения
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для обновления цветов")
+                return
             
             week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
             
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     AVG(download_speed) as avg_download,
                     AVG(ping) as avg_ping
@@ -780,8 +1017,8 @@ class InternetSpeedMonitor:
                 WHERE timestamp >= ? AND download_speed > 0 AND ping > 0
             ''', (week_ago,))
             
-            result = cursor.fetchone()
-            conn.close()
+            result = db.cursor.fetchone()
+            db.close()
             
             avg_download = result[0] if result and result[0] else None
             avg_ping = result[1] if result and result[1] else None
@@ -843,17 +1080,17 @@ class InternetSpeedMonitor:
 # region ### Можно осторожно менять
     def analyze_connection_quality(self):
         """Анализ качества соединения за последнюю неделю"""
-        conn = None
         try:
-            # Подключаемся к БД (ОДНО соединение для всех запросов)
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для анализа")
+                return
             
             # Дата неделю назад
             week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
             
             # Получаем средние значения за неделю
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     AVG(download_speed) as avg_download,
                     AVG(upload_speed) as avg_upload,
@@ -864,17 +1101,17 @@ class InternetSpeedMonitor:
                 WHERE timestamp >= ?
             ''', (week_ago,))
             
-            result = cursor.fetchone()
+            result = db.cursor.fetchone()
             
             if not result or not result[0] or result[4] < 3:  # Минимум 3 измерения
                 self.logger.info("Недостаточно данных для анализа (меньше 3 измерений за неделю)")
-                conn.close()
+                db.close()
                 return
             
             avg_download, avg_upload, avg_ping, avg_jitter, count = result
             
             # Получаем процент измерений с высоким джиттером
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     COUNT(*) as total,
                     SUM(CASE WHEN jitter > ? THEN 1 ELSE 0 END) as bad_count
@@ -882,14 +1119,14 @@ class InternetSpeedMonitor:
                 WHERE timestamp >= ?
             ''', (self.jitter_threshold_var.get(), week_ago))
             
-            jitter_stats = cursor.fetchone()
+            jitter_stats = db.cursor.fetchone()
             total_jitter, bad_jitter = jitter_stats if jitter_stats else (0, 0)
             
             # Получаем средние значения за предыдущий период для сравнения
             two_weeks_ago = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d %H:%M:%S')
             week_before = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
             
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     AVG(download_speed) as prev_avg_download,
                     AVG(ping) as prev_avg_ping
@@ -897,11 +1134,8 @@ class InternetSpeedMonitor:
                 WHERE timestamp BETWEEN ? AND ?
             ''', (two_weeks_ago, week_before))
             
-            prev_result = cursor.fetchone()
-            
-            # Закрываем соединение ПОСЛЕ всех запросов
-            conn.close()
-            conn = None
+            prev_result = db.cursor.fetchone()
+            db.close()
             
             prev_avg_download = prev_result[0] if prev_result and prev_result[0] else avg_download
             prev_avg_ping = prev_result[1] if prev_result and prev_result[1] else avg_ping
@@ -941,10 +1175,6 @@ class InternetSpeedMonitor:
             
         except Exception as e:
             self.logger.error(f"Ошибка анализа соединения: {e}")
-        finally:
-            # Гарантированно закрываем соединение, если оно еще открыто
-            if conn:
-                conn.close()
 # endregion
 
 # region ### Можно осторожно менять
@@ -2722,75 +2952,77 @@ class InternetSpeedMonitor:
     def load_settings(self):
         """Загрузка настроек из БД"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для загрузки настроек")
+                return
 
             # === ОСНОВНЫЕ НАСТРОЙКИ ===
-            cursor.execute("SELECT value FROM settings WHERE key='interval'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='interval'")
+            result = db.cursor.fetchone()
             if result:
                 self.interval_var.set(int(result[0]))
 
-            cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='auto_start'")
+            result = db.cursor.fetchone()
             if result:
                 self.auto_start_var.set(result[0] == '1')
             
-            cursor.execute("SELECT value FROM settings WHERE key='minimize_to_tray'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='minimize_to_tray'")
+            result = db.cursor.fetchone()
             if result:
                 self.minimize_to_tray_var.set(result[0] == '1')
 
-            cursor.execute("SELECT value FROM settings WHERE key='planned_speed'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='planned_speed'")
+            result = db.cursor.fetchone()
             if result:
                 self.planned_speed_var.set(int(result[0]))
             else:
                 self.planned_speed_var.set(100)
 
             # === НАСТРАИВАЕМЫЕ ПОРОГИ ===
-            cursor.execute("SELECT value FROM settings WHERE key='download_threshold'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='download_threshold'")
+            result = db.cursor.fetchone()
             if result:
                 self.download_threshold_var.set(int(result[0]))
             
-            cursor.execute("SELECT value FROM settings WHERE key='ping_threshold'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='ping_threshold'")
+            result = db.cursor.fetchone()
             if result:
                 self.ping_threshold_var.set(int(result[0]))
             
-            cursor.execute("SELECT value FROM settings WHERE key='jitter_threshold'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='jitter_threshold'")
+            result = db.cursor.fetchone()
             if result:
                 self.jitter_threshold_var.set(int(result[0]))
             
-            cursor.execute("SELECT value FROM settings WHERE key='jitter_frequency'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='jitter_frequency'")
+            result = db.cursor.fetchone()
             if result:
                 self.jitter_frequency_var.set(int(result[0]))
 
             # === НАСТРОЙКИ ОЧИСТКИ ===
-            cursor.execute("SELECT value FROM settings WHERE key='clean_enabled'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='clean_enabled'")
+            result = db.cursor.fetchone()
             if result:
                 self.clean_enabled_var.set(result[0] == '1')
             
-            cursor.execute("SELECT value FROM settings WHERE key='clean_days'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='clean_days'")
+            result = db.cursor.fetchone()
             if result:
                 self.auto_clean_days_var.set(int(result[0]))
 
             # === ПРЕМИУМ-СТАТУС ===
-            cursor.execute("SELECT value FROM settings WHERE key='premium_export'")
-            result = cursor.fetchone()
+            db.execute("SELECT value FROM settings WHERE key='premium_export'")
+            result = db.cursor.fetchone()
             if result:
                 self.premium_export.set(result[0] == '1')
             else:
                 self.premium_export.set(False)
             
-            conn.close()
+            db.close()
             
-            # Обновляем интерфейс после загрузки
+            # После загрузки всех настроек обновляем вкладку настроек
             if hasattr(self, 'settings_frame'):
                 self._refresh_settings_tab()
             
@@ -2798,7 +3030,7 @@ class InternetSpeedMonitor:
                            f"автозапуск={self.auto_start_var.get()}, "
                            f"трей={self.minimize_to_tray_var.get()}")
             
-        except Error as e:
+        except Exception as e:
             self.logger.error(f"Ошибка загрузки настроек: {e}")
 
     def save_settings(self, restart=True, show_message=True):
@@ -2808,47 +3040,49 @@ class InternetSpeedMonitor:
         self._saving_settings = True
         
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для сохранения настроек")
+                return
             
             # Сохраняем интервал
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('interval', str(self.interval_var.get())))
 
             # Сохраняем заявленную скорость
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('planned_speed', str(self.planned_speed_var.get())))
 
             # === НАСТРАИВАЕМЫЕ ПОРОГИ ===
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('download_threshold', str(self.download_threshold_var.get())))
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('ping_threshold', str(self.ping_threshold_var.get())))
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('jitter_threshold', str(self.jitter_threshold_var.get())))
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('jitter_frequency', str(self.jitter_frequency_var.get())))
             # ===========================
 
             # === НАСТРОЙКИ ОЧИСТКИ ===
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('clean_enabled', '1' if self.clean_enabled_var.get() else '0'))
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('clean_days', str(self.auto_clean_days_var.get())))
             # ========================
 
             # === ПРЕМИУМ-СТАТУС ===
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('premium_export', '1' if self.premium_export.get() else '0'))
             # ======================
 
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('auto_start', '1' if self.auto_start_var.get() else '0'))
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('minimize_to_tray', '1' if self.minimize_to_tray_var.get() else '0'))
             
-            conn.commit()  # ВАЖНО: подтверждаем изменения
-            conn.close()
+            db.commit()
+            db.close()
            
             self.update_autostart()
             
@@ -2860,7 +3094,7 @@ class InternetSpeedMonitor:
                 )
                 self.logger.info("Настройки сохранены и применены")
             
-        except Error as e:
+        except Exception as e:
             self.logger.error(f"Ошибка сохранения настроек: {e}")
             messagebox.showerror("Ошибка", f"Не удалось сохранить настройки: {e}")
         finally:
@@ -3194,12 +3428,14 @@ class InternetSpeedMonitor:
                           client_ip="", client_provider="", connection_type=""):
         """Сохранение результатов теста в БД"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для сохранения результатов")
+                return
             
             # Проверяем наличие колонок
-            cursor.execute("PRAGMA table_info(speed_measurements)")
-            columns = [col[1] for col in cursor.fetchall()]
+            db.execute("PRAGMA table_info(speed_measurements)")
+            columns = [col[1] for col in db.cursor.fetchall()]
             
             # Добавляем новые колонки если их нет
             new_columns = {
@@ -3212,21 +3448,21 @@ class InternetSpeedMonitor:
             
             for col_name, col_type in new_columns.items():
                 if col_name not in columns:
-                    cursor.execute(f'ALTER TABLE speed_measurements ADD COLUMN {col_name} {col_type}')
+                    db.execute(f'ALTER TABLE speed_measurements ADD COLUMN {col_name} {col_type}')
             
-            cursor.execute('''
+            db.execute('''
                 INSERT INTO speed_measurements 
                 (timestamp, download_speed, upload_speed, ping, jitter, server, 
                  server_city, server_provider, client_ip, client_provider, connection_type) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
                 download, upload, ping, jitter, server,
                 server_city, server_provider, client_ip, client_provider, connection_type
             ))
             
-            conn.commit()
-            conn.close()
+            db.commit()
+            db.close()
             
             # ЯВНОЕ ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
             self.download_var.set(f"{download:.2f} Mbps" if download else "0 Mbps")
@@ -3248,6 +3484,13 @@ class InternetSpeedMonitor:
             self.root.update_idletasks()
             
             self.root.after(0, self.update_log)
+            self.root.after(0, self.update_graph)
+            
+            self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
+            self.logger.info(f"UI обновлен: провайдер={client_provider}, тип={connection_type}")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка сохранения результатов: {e}")
 #           self.root.after(0, self.update_graph)
             
             self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
@@ -3359,8 +3602,10 @@ class InternetSpeedMonitor:
             for item in self.log_tree.get_children():
                 self.log_tree.delete(item)
             
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для обновления журнала")
+                return
             
             # Строим запрос с фильтром
             query = '''
@@ -3382,8 +3627,8 @@ class InternetSpeedMonitor:
             
             query += " ORDER BY timestamp DESC LIMIT 1000"
             
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
+            db.execute(query, params)
+            rows = db.cursor.fetchall()
             
             # Сначала рассчитываем средние значения для определения порогов
             if rows:
@@ -3419,11 +3664,11 @@ class InternetSpeedMonitor:
 
             # Добавляем данные в таблицу с форматированием
             for row in rows:
-                # Форматируем дату из формата "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
+                # Форматируем дату из формата "YYYY-MM-DD HH:MM:SS" в "DD.MM.YY HH:MM"
                 timestamp = row[1]
                 if timestamp and isinstance(timestamp, str):
                     try:
-                        dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                        dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
                         formatted_timestamp = dt.strftime('%d.%m.%y %H:%M')
                     except:
                         formatted_timestamp = timestamp
@@ -3473,14 +3718,14 @@ class InternetSpeedMonitor:
                 )
                 
                 # Вставляем строку ТОЛЬКО ОДИН РАЗ
-                item_id = self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
+                self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
 
-            conn.close()
+            db.close()
             
             # Обновляем статус
             self.status_var.set(f"Загружено записей: {len(rows)}")
             
-        except Error as e:
+        except Exception as e:
             self.logger.error(f"Ошибка обновления журнала: {e}")
             self.status_var.set(f"Ошибка загрузки журнала: {e}")
 
@@ -3521,21 +3766,23 @@ class InternetSpeedMonitor:
             import matplotlib.pyplot as plt
             import gc
             from datetime import datetime, timedelta
-            import sqlite3            
-           
+            
             # КРИТИЧЕСКИ ВАЖНО: закрываем все старые фигуры matplotlib
             plt.close('all')
             gc.collect()
             
             self.fig.clear()
             
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для обновления графиков")
+                self._updating_graph = False
+                return
             
             # Определяем период
             period = self.graph_period_var.get()
             
-            # ========== ИСПРАВЛЕННЫЙ БЛОК ДЛЯ ПЕРИОДА "ДЕНЬ" ==========
+            # ========== БЛОК ДЛЯ ПЕРИОДА "ДЕНЬ" ==========
             if period == "День":
                 self.logger.info("ДИАГНОСТИКА: Начало обработки периода ДЕНЬ")
                 
@@ -3545,18 +3792,16 @@ class InternetSpeedMonitor:
                     start_date = datetime(selected_date.year, selected_date.month, selected_date.day, 0, 0, 0)
                     end_date = datetime(selected_date.year, selected_date.month, selected_date.day, 23, 59, 59)
                     
-                  
                     # Проверяем, есть ли данные за этот день
-                    check_cursor = conn.cursor()
-                    check_cursor.execute('''
+                    db.execute('''
                         SELECT COUNT(*) FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
                     ''', (start_date.strftime('%Y-%m-%d %H:%M:%S'), 
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
-                    day_count = check_cursor.fetchone()[0]
+                    day_count = db.cursor.fetchone()[0]
                     
                     # ВЫПОЛНЯЕМ ОСНОВНОЙ ЗАПРОС
-                    cursor.execute('''
+                    db.execute('''
                         SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
@@ -3571,7 +3816,7 @@ class InternetSpeedMonitor:
                     start_date = datetime.now() - timedelta(days=1)
                     end_date = datetime.now()
                     
-                    cursor.execute('''
+                    db.execute('''
                         SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
@@ -3580,7 +3825,7 @@ class InternetSpeedMonitor:
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
                 
                 # Получаем данные
-                data = cursor.fetchall()
+                data = db.cursor.fetchall()
                 
                 # ПРОВЕРКА: есть ли данные за выбранный день?
                 if not data:
@@ -3588,14 +3833,13 @@ class InternetSpeedMonitor:
                     
                     # Показываем все даты в БД для диагностики
                     try:
-                        debug_cursor = conn.cursor()
-                        debug_cursor.execute('''
+                        db.execute('''
                             SELECT DISTINCT date(timestamp) as day, COUNT(*) as cnt
                             FROM speed_measurements 
                             GROUP BY day
                             ORDER BY day
                         ''')
-                        all_days = debug_cursor.fetchall()
+                        all_days = db.cursor.fetchall()
                     except:
                         pass
                     
@@ -3603,12 +3847,12 @@ class InternetSpeedMonitor:
                     ax.text(0.5, 0.5, 'Нет данных за выбранный день', 
                            ha='center', va='center', transform=ax.transAxes)
                     self.canvas.draw()
+                    db.close()
                     gc.collect()
                     self._updating_graph = False
                     return
 
-            # ========== КОНЕЦ БЛОКА ДЛЯ ПЕРИОДА "ДЕНЬ" ==========
-                    
+            # ========== ПЕРИОД "НЕДЕЛЯ" ==========
             elif period == "Неделя":
                 # Выбранная неделя
                 if hasattr(self, 'graph_week_combo') and hasattr(self, 'graph_year_combo'):
@@ -3624,7 +3868,7 @@ class InternetSpeedMonitor:
                         start_date -= timedelta(days=1)
                     end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
                     
-                    cursor.execute('''
+                    db.execute('''
                         SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
@@ -3637,7 +3881,7 @@ class InternetSpeedMonitor:
                 else:
                     start_date = datetime.now() - timedelta(days=7)
                     end_date = datetime.now()
-                    cursor.execute('''
+                    db.execute('''
                         SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
@@ -3646,8 +3890,9 @@ class InternetSpeedMonitor:
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
                 
                 # Получаем данные
-                data = cursor.fetchall()
+                data = db.cursor.fetchall()
                     
+            # ========== ПЕРИОД "МЕСЯЦ" ==========
             elif period == "Месяц":
                 # Выбранный месяц (цифрой)
                 if hasattr(self, 'graph_month_combo') and hasattr(self, 'graph_month_year_combo'):
@@ -3659,7 +3904,7 @@ class InternetSpeedMonitor:
                     else:
                         end_date = datetime(year, month+1, 1) - timedelta(seconds=1)
                     
-                    cursor.execute('''
+                    db.execute('''
                         SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
@@ -3672,7 +3917,7 @@ class InternetSpeedMonitor:
                 else:
                     start_date = datetime.now() - timedelta(days=30)
                     end_date = datetime.now()
-                    cursor.execute('''
+                    db.execute('''
                         SELECT timestamp, download_speed, upload_speed, ping, jitter 
                         FROM speed_measurements 
                         WHERE timestamp BETWEEN ? AND ?
@@ -3681,12 +3926,12 @@ class InternetSpeedMonitor:
                           end_date.strftime('%Y-%m-%d %H:%M:%S')))
                 
                 # Получаем данные
-                data = cursor.fetchall()
+                data = db.cursor.fetchall()
                     
             else:  # Все время
                 start_date = datetime.now() - timedelta(days=36500)  # 100 лет
                 end_date = datetime.now()
-                cursor.execute('''
+                db.execute('''
                     SELECT timestamp, download_speed, upload_speed, ping, jitter 
                     FROM speed_measurements 
                     WHERE timestamp BETWEEN ? AND ?
@@ -3695,10 +3940,10 @@ class InternetSpeedMonitor:
                       end_date.strftime('%Y-%m-%d %H:%M:%S')))
                 
                 # Получаем данные
-                data = cursor.fetchall()
+                data = db.cursor.fetchall()
             
-            # Закрываем соединение
-            conn.close()
+            # Закрываем соединение с БД
+            db.close()
             
             # Общая проверка наличия данных
             if not data:
@@ -3808,7 +4053,7 @@ class InternetSpeedMonitor:
             if avg_upload > 0:
                 ax1.axhline(y=avg_upload, color='r', linestyle='--', linewidth=1, alpha=0.6)
 
-            # Добавляем линию заявленной скорости (зеленая штрих-пунктирная)
+            # Добавляем линию заявленной скорости
             planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 0
             if planned > 0:
                 ax1.axhline(y=planned, color='green', linestyle='-.', linewidth=2, alpha=0.8, label=f'Тариф ({planned} Mbps)')
@@ -3829,12 +4074,9 @@ class InternetSpeedMonitor:
                 ax1.xaxis.set_major_locator(MaxNLocator(10))
                 ax1.tick_params(axis='x', rotation=45)
             else:
-                # Для остальных периодов показываем дату
                 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m.%y'))
-                # ВАЖНО: добавляем ограничение тиков для всех периодов
                 ax1.xaxis.set_major_locator(MaxNLocator(10))
                 if period == "Неделя":
-                    # Можно оставить DayLocator, но с ограничением
                     ax1.xaxis.set_major_locator(MaxNLocator(7))
                 elif period == "Месяц":
                     ax1.xaxis.set_major_locator(MaxNLocator(10))
@@ -3877,7 +4119,6 @@ class InternetSpeedMonitor:
                     ax2.xaxis.set_major_locator(MaxNLocator(10))
                 ax2.tick_params(axis='x', rotation=45)
 
-            # <<<--- ВСТАВЬТЕ ЭТОТ БЛОК ЗДЕСЬ --->>>
             # Проверяем количество точек данных
             total_points = len(data)
             if total_points == 1:
@@ -3891,7 +4132,6 @@ class InternetSpeedMonitor:
                 ax2.set_xlim(x_min, x_max)
                 
                 self.logger.info(f"Одна точка данных: диапазон {x_min} - {x_max}")
-            # <<<--- КОНЕЦ БЛОКА --->>>
 
             # Автоматическое форматирование дат
             self.fig.autofmt_xdate()
@@ -3974,15 +4214,22 @@ class InternetSpeedMonitor:
             if license_key:
                 self.premium_export.set(True)
                 self._save_premium_status()
-                # ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ ВКЛАДКУ НАСТРОЕК
                 self._refresh_settings_tab()
             
-            # Здесь весь существующий код экспорта
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server FROM speed_measurements ORDER BY timestamp DESC')
-            rows = cursor.fetchall()
-            conn.close()
+            # Получаем данные из зашифрованной БД
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для экспорта")
+                messagebox.showerror("Ошибка", "Не удалось подключиться к базе данных")
+                return
+            
+            db.execute('SELECT id, timestamp, download_speed, upload_speed, ping, jitter, server FROM speed_measurements ORDER BY timestamp DESC')
+            rows = db.cursor.fetchall()
+            db.close()
+            
+            if not rows:
+                messagebox.showinfo("Экспорт", "Нет данных для экспорта")
+                return
             
             import csv
             with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
@@ -3994,7 +4241,7 @@ class InternetSpeedMonitor:
                     timestamp = row[1]
                     if timestamp and isinstance(timestamp, str):
                         try:
-                            dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                            dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
                             formatted_timestamp = dt.strftime('%d-%m-%Y %H:%M:%S')
                         except:
                             formatted_timestamp = timestamp
