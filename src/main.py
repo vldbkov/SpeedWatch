@@ -1875,32 +1875,59 @@ class InternetSpeedMonitor:
         control_frame = ttk.Frame(self.graph_frame)
         control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
-        ttk.Label(control_frame, text="Период:", font=self.scale_font('Arial', 10)).pack(side='left')
+        # Используем grid для точного контроля ширины
+        control_frame.columnconfigure(0, weight=0)  # метка "Период:"
+        control_frame.columnconfigure(1, weight=0)  # радиокнопки
+        control_frame.columnconfigure(2, weight=0)  # селекторы
+        control_frame.columnconfigure(3, weight=0)  # кнопка обновить
+        control_frame.columnconfigure(4, weight=1)  # пустой расширяемый столбец
+        control_frame.columnconfigure(5, weight=0)  # кнопка экспорта
         
-        # Радиокнопки выбора периода
+        # Метка "Период:"
+        ttk.Label(control_frame, text="Период:", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', padx=(0, 5))
+        
+        # Радиокнопки в отдельном фрейме для компактности
         period_frame = ttk.Frame(control_frame)
-        period_frame.pack(side='left', padx=10)
+        period_frame.grid(row=0, column=1, sticky='w', padx=(0, 5))
         
         ttk.Radiobutton(period_frame, text="День", variable=self.graph_period_var, 
-                       value="День", command=self.update_graph_period_ui).pack(side='left', padx=2)
-        ttk.Radiobutton(period_frame, text="Неделя", variable=self.graph_period_var, 
-                       value="Неделя", command=self.update_graph_period_ui).pack(side='left', padx=2)
-        ttk.Radiobutton(period_frame, text="Месяц", variable=self.graph_period_var, 
-                       value="Месяц", command=self.update_graph_period_ui).pack(side='left', padx=2)
+                       value="День", command=self.update_graph_period_ui).pack(side='left')
+        ttk.Radiobutton(period_frame, text="Нед", variable=self.graph_period_var, 
+                       value="Неделя", command=self.update_graph_period_ui).pack(side='left')
+        ttk.Radiobutton(period_frame, text="Мес", variable=self.graph_period_var, 
+                       value="Месяц", command=self.update_graph_period_ui).pack(side='left')
         ttk.Radiobutton(period_frame, text="Все время", variable=self.graph_period_var, 
-                       value="Все время", command=self.update_graph_period_ui).pack(side='left', padx=2)
+                       value="Все время", command=self.update_graph_period_ui).pack(side='left')
         
-        # Контейнер для элементов выбора
+        # Контейнер для селекторов (календарь, неделя/год и т.д.)
         self.graph_selector_frame = ttk.Frame(control_frame)
-        self.graph_selector_frame.pack(side='left', padx=10)
+        self.graph_selector_frame.grid(row=0, column=2, sticky='w', padx=5)
         
         # Кнопка обновления
-        ttk.Button(control_frame, text="Обновить\n  график", command=self.update_graph, 
-                  width=8).pack(side='left', padx=5)
+        update_btn = ttk.Button(control_frame, text="Обновить", command=self.update_graph, width=8)
+        update_btn.grid(row=0, column=3, sticky='w', padx=5)
         
-        # Кнопка экспорта
-        ttk.Button(control_frame, text="Экспорт\n  PNG", command=self.export_graph, 
-                  width=8).pack(side='left', padx=5)
+        # Пустой расширяемый столбец
+        ttk.Frame(control_frame).grid(row=0, column=4, sticky='ew')
+        
+        # Кнопка экспорта PNG (премиум)
+        if self.premium_export.get():
+            export_btn = ttk.Button(control_frame, text="Экспорт PNG", command=self.export_graph, width=12)
+        else:
+            export_btn = tk.Button(control_frame, text="🌟PNG\nPremium",
+                                   command=self.export_graph,
+                                   fg="#D4AF37",
+                                   bg="#2C2C2C",
+                                   activeforeground="#FFD700",
+                                   activebackground="#3C3C3C",
+                                   relief="solid",
+                                   bd=1,
+                                   width=8,
+                                   height=2,
+                                   font=('Arial', 8, 'bold'),
+                                   cursor="hand2",
+                                   justify='center')
+        export_btn.grid(row=0, column=5, sticky='e', padx=5)
         
         # Область для графиков
         self.graph_canvas_frame = ttk.Frame(self.graph_frame)
@@ -1974,7 +2001,26 @@ class InternetSpeedMonitor:
         
         # Кнопки управления журналом
         ttk.Button(log_control_frame, text="Обновить", command=self.update_log).pack(side='left', padx=5)
-        ttk.Button(log_control_frame, text="Экспорт в CSV", command=self.export_log).pack(side='left', padx=5)
+        
+        # Кнопка экспорта CSV (премиум)
+        if self.premium_export.get():
+            export_csv_btn = ttk.Button(log_control_frame, text="Экспорт в CSV", command=self.export_log)
+        else:
+            export_csv_btn = tk.Button(log_control_frame, text="📊 Экспорт в CSV (Premium)", 
+                                       command=self.export_log,
+                                       fg="#D4AF37",
+                                       bg="#2C2C2C",
+                                       activeforeground="#FFD700",
+                                       activebackground="#3C3C3C",
+                                       relief="solid",
+                                       bd=2,
+                                       highlightbackground="#D4AF37",
+                                       highlightcolor="#D4AF37",
+                                       highlightthickness=1,
+                                       font=('Arial', 10, 'bold'),
+                                       cursor="hand2")
+        export_csv_btn.pack(side='left', padx=5)
+        
         ttk.Button(log_control_frame, text="Очистить журнал", command=self.clear_log).pack(side='left', padx=5)
         
         # Поля выбора периода с календарем
@@ -4163,24 +4209,50 @@ class InternetSpeedMonitor:
 
 
     def export_graph(self):
-        """Экспорт графика в PNG"""
+        """Экспорт графика в PNG (премиум-функция)"""
         try:
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".png",
-                filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
-                initialfile=f"internet_speed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            )
+            if not self.premium_export.get():
+                show_premium_dialog(self.root, self._do_export_graph)
+                return
             
-            if filename:
-                self.fig.savefig(filename, dpi=300, bbox_inches='tight')
-                self.status_var.set(f"График экспортирован: {filename}")
-                self.logger.info(f"График экспортирован в {filename}")
-                messagebox.showinfo("Успех", f"График сохранен в файл:\n{filename}")
-                
+            self._do_export_graph(None)
+            
         except Exception as e:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
 
+    def _do_export_graph(self, license_key):
+        """Фактическое выполнение экспорта графика (после активации)"""
+        try:
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".png",
+                filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+                initialfile=f"speedwatch_graph_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            )
+            
+            if not filename:
+                return
+                
+            # Если пришел ключ - активируем премиум навсегда
+            if license_key:
+                self.premium_export.set(True)
+                self._save_premium_status()
+                self._refresh_settings_tab()
+            
+            self.fig.savefig(filename, dpi=300, bbox_inches='tight')
+            
+            self.status_var.set(f"График экспортирован: {filename}")
+            self.logger.info(f"График экспортирован в {filename}")
+            messagebox.showinfo("Успех", f"График сохранен в файл:\n{filename}")
+            
+            if license_key:
+                messagebox.showinfo("Активация", 
+                                   "✅ Премиум-доступ активирован!\n\n"
+                                   "Теперь функция экспорта всегда доступна.")
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка экспорта графика: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
 
     def export_log(self):
         """Экспорт журнала в CSV (премиум-функция)"""
