@@ -169,7 +169,6 @@ class InternetSpeedMonitor:
         print("[DEBUG] InternetSpeedMonitor __init__ started")
         try:
             self.dpi_scale = get_dpi_scale_factor()
-
         except Exception as e:
             print(f"[DEBUG] Ошибка в __init__: {e}")
             import traceback
@@ -199,15 +198,10 @@ class InternetSpeedMonitor:
             self.create_icon()
         
         self.running = False
-
         self.test_in_progress = False  # Флаг выполнения теста
 
         # Анимация теста скорости        
         self.animation_chars = ['-', '\\', '|', '/']  # Символы для анимации
-        self.animation_index = 0
-        self.animation_job = None
-
-        self.animation_chars = ['-', '\\', '|', '/']  # Символы для анимации теста
         self.animation_index = 0
         self.animation_job = None
         
@@ -217,18 +211,11 @@ class InternetSpeedMonitor:
 
         self.monitor_thread = None
 
-        # Определяем корневую директорию проекта
-        if getattr(sys, 'frozen', False):
-            self.base_dir = os.path.dirname(sys.executable)
-        else:
-            self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
         # Путь к папке data
         data_dir = os.path.join(self.base_dir, "data")
         os.makedirs(data_dir, exist_ok=True)
         
         self.db_path = os.path.join(self.base_dir, "data", "internet_speed.db")
-
         self.lock_file = None
         self.lock_file_path = os.path.join(tempfile.gettempdir(), "internet_monitor.lock")
 
@@ -241,7 +228,7 @@ class InternetSpeedMonitor:
         self.console_visible = False  # Начинаем со скрытой консоли
         self.setup_console()
         
-        # === ВСЕ ПЕРЕМЕННЫЕ ИНТЕРФЕЙСА ДОЛЖНЫ БЫТЬ ЗДЕСЬ ===
+        # === ВСЕ ПЕРЕМЕННЫЕ ИНТЕРФЕЙСА ДОЛЖНЫ БЫТЬ ЗДЕСЬ (ДО ЗАГРУЗКИ НАСТРОЕК) ===
         self.download_var = tk.StringVar(value="0 Mbps")
         self.upload_var = tk.StringVar(value="0 Mbps")
         self.ping_var = tk.StringVar(value="0 ms")
@@ -255,14 +242,18 @@ class InternetSpeedMonitor:
         self.connection_type_var = tk.StringVar(value="—")
         self.server_info_var = tk.StringVar(value="—")
         self.ip_address_var = tk.StringVar(value="—")
-        # ===================================================
+        
+        # === ПЕРЕМЕННЫЕ НАСТРОЕК ===
+        self.interval_var = tk.IntVar(value=60)
+        self.auto_start_var = tk.BooleanVar(value=False)
+        self.minimize_to_tray_var = tk.BooleanVar(value=True)
+        self.planned_speed_var = tk.IntVar(value=100)
 
         # === НАСТРАИВАЕМЫЕ ПОРОГИ ===
         self.download_threshold_var = tk.IntVar(value=25)  # % падения скорости
         self.ping_threshold_var = tk.IntVar(value=100)     # % роста пинга
         self.jitter_threshold_var = tk.IntVar(value=15)    # мс
         self.jitter_frequency_var = tk.IntVar(value=30)    # % частоты превышений
-        # ===========================
 
         # === ПЕРЕМЕННЫЕ ДЛЯ СТАТИСТИКИ ===
         self.stats_period_var = tk.StringVar(value="Месяц")
@@ -271,7 +262,6 @@ class InternetSpeedMonitor:
         self.stats_month_var = tk.StringVar()
         self.stats_quarter_var = tk.StringVar()
         self.stats_year_var = tk.StringVar(value=str(datetime.now().year))
-        # =================================
 
         # === ПЕРЕМЕННЫЕ ДЛЯ ГРАФИКОВ ===
         self.graph_period_var = tk.StringVar(value="День")
@@ -282,20 +272,24 @@ class InternetSpeedMonitor:
 
         # === ОЧИСТКА ИСТОРИИ ===
         self.clean_enabled_var = tk.BooleanVar(value=True)
-        self.auto_clean_days_var = tk.IntVar(value=90)  # 90 дней по умолчанию
+        self.auto_clean_days_var = tk.IntVar(value=90)
 
         # === ПРЕМИУМ-ФУНКЦИИ ===
-        self.premium_export = tk.BooleanVar(value=False)  # Статус активации экспорта
-        # =========================
+        self.premium_export = tk.BooleanVar(value=False)
+        # =========================================
 
-        # Создание интерфейса
-        self.create_widgets()
-        
+        # ЗАГРУЗКА НАСТРОЕК (после создания всех переменных)
+        self.is_first_load = True
+        self.load_settings()
+
+        # Создание интерфейса (после загрузки настроек)
+        self.create_widgets()        
+       
         # Устанавливаем начальные даты в фильтре журнала
         first_date = self.get_first_measurement_date()
         self.date_from_entry.set_date(first_date)
         self.date_to_entry.set_date(datetime.now().date())        
-       
+        
         # Устанавливаем начальный статус
         self.status_var.set("Ожидание команды")
         
@@ -303,17 +297,9 @@ class InternetSpeedMonitor:
         last_time = self.get_last_measurement_time()
         self.last_check_var.set(last_time)
 
-        # Обновляем график с периодом "Все время"
-#       self.root.after(500, self.update_graph)  # Небольшая задержка для полной загрузки интерфейса     
-          
-        
-        # Загрузка настроек
-        self.is_first_load = True  # Флаг первого запуска
-        self.load_settings()
-
         # ПОКАЗЫВАЕМ ОКНО "О ПРОГРАММЕ" ПРИ ПЕРВОМ ЗАПУСКЕ
         if self.is_first_load:
-            self.root.after(500, self.show_about_window)  # Небольшая задержка
+            self.root.after(500, self.show_about_window)
 
         # Загружаем последние значения измерений
         self.load_last_measurement()
@@ -327,7 +313,6 @@ class InternetSpeedMonitor:
         
         # Для EXE режима - принудительно показываем окно при первом запуске
         if getattr(sys, 'frozen', False) and not self.minimize_to_tray_var.get():
-            # Небольшая задержка, чтобы окно успело инициализироваться
             self.root.after(500, self.show_window)      
         
         # Создание меню для трея
@@ -338,14 +323,14 @@ class InternetSpeedMonitor:
             self.update_autostart()
             self.logger.info("Автозапуск активирован при старте EXE")
 
-        # При закрытии окна - сворачиваем в трей и обновляем меню трея
+        # При закрытии окна - сворачиваем в трей
         self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)        
-       
+        
         # Сворачиваем в трей если включена настройка
         if self.minimize_to_tray_var.get():
             self.minimize_to_tray()
 
-        # Обновляем меню трея, чтобы текст пункта соответствовал текущему состоянию окна
+        # Обновляем меню трея
         try:
             self.update_tray_menu()
         except Exception:
@@ -354,17 +339,12 @@ class InternetSpeedMonitor:
         # При автозапуске даем сети время инициализироваться
         if self.auto_start_var.get():
             self.logger.info("Автозапуск: ждем 15 секунд для инициализации сети...")
-            self.root.after(15000, self.start_monitoring)  # 15 секунд задержки
+            self.root.after(15000, self.start_monitoring)
         else:
-            # Обычный запуск - задержка 2 секунды
             self.root.after(2000, self.analyze_connection_quality)
-
-            # Автоматическая проверка обновлений при старте (с задержкой 3 секунды)
             self.root.after(3000, self._check_updates_auto)
         
-        # Флаг начального состояния (старт в трее)
         self.started_in_tray = True        
-        ###
         
         # Скрываем консоль после создания трея
         self.hide_console_on_start()
@@ -372,7 +352,6 @@ class InternetSpeedMonitor:
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
 
-        
     def center_window(self):
         """Центрирование окна на экране"""
         self.root.update_idletasks()
@@ -2476,14 +2455,12 @@ class InternetSpeedMonitor:
 
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
-
         # Основной фрейм с настройками
         settings_frame = ttk.LabelFrame(self.settings_frame, text="Настройки мониторинга", padding=20)
         settings_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
-        # === ВАЖНО: настраиваем растяжение колонки ===
-        settings_frame.columnconfigure(0, weight=1)  # колонка 0 будет растягиваться
-        # ===========================================
+        # Настраиваем растяжение колонки
+        settings_frame.columnconfigure(0, weight=1)
         
         # === ВЕРХНЯЯ СТРОКА: Интервал + Автозапуск ===
         top_frame = ttk.Frame(settings_frame)
@@ -2491,12 +2468,14 @@ class InternetSpeedMonitor:
         top_frame.columnconfigure(1, weight=1)
         
         # Интервал проверки (слева)
-        ttk.Label(top_frame, text="Интервал проверки (мин):     ", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
-        self.interval_var = tk.IntVar(value=60)
-        ttk.Spinbox(top_frame, from_=1, to=1440, textvariable=self.interval_var, width=8, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=5, sticky='w')
+        ttk.Label(top_frame, text="Интервал проверки (мин):     ", 
+                 font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
         
-        # Автозапуск (справа)
-        self.auto_start_var = tk.BooleanVar(value=False)
+        # Используем существующую переменную self.interval_var
+        ttk.Spinbox(top_frame, from_=1, to=1440, textvariable=self.interval_var, 
+                   width=8, font=self.scale_font('Arial', 10)).grid(row=0, column=1, padx=5, sticky='w')
+        
+        # Автозапуск (справа) - используем существующую переменную
         ttk.Checkbutton(top_frame, text="Автозапуск при старте Windows", 
                        variable=self.auto_start_var).grid(row=0, column=2, padx=(20,0), sticky='w')
         
@@ -2506,21 +2485,21 @@ class InternetSpeedMonitor:
         middle_frame.columnconfigure(1, weight=1)
         
         # Заявленная скорость (слева)
-        ttk.Label(middle_frame, text="Заявленная скорость (Mbps):", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
+        ttk.Label(middle_frame, text="Заявленная скорость (Mbps):", 
+                 font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w')
         
         # Фрейм для спинбокса и пояснения
         speed_frame = ttk.Frame(middle_frame)
         speed_frame.grid(row=0, column=1, padx=5, sticky='w')
         
-        self.planned_speed_var = tk.IntVar(value=100)
+        # Используем существующую переменную self.planned_speed_var
         ttk.Spinbox(speed_frame, from_=0, to=10000, textvariable=self.planned_speed_var, 
                    width=8, font=self.scale_font('Arial', 10)).pack(side='left')
         
         ttk.Label(speed_frame, text="(0=не учитывать)", font=self.scale_font('Arial', 8), 
                  foreground='gray').pack(side='left', padx=5)
         
-        # Сворачивание в трей (справа)
-        self.minimize_to_tray_var = tk.BooleanVar(value=True)
+        # Сворачивание в трей (справа) - используем существующую переменную
         ttk.Checkbutton(middle_frame, text="Сворачивать в трей", 
                        variable=self.minimize_to_tray_var).grid(row=0, column=2, padx=(20,0), sticky='w')
         
@@ -2540,38 +2519,46 @@ class InternetSpeedMonitor:
         # === ЛЕВЫЙ БЛОК: ПОРОГИ КАЧЕСТВА ===
         thresholds_frame = ttk.LabelFrame(horizontal_frame, text="Пороги качества соединения", padding=10)
         thresholds_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
-        
-        # Настройка растяжения внутри левого блока
         thresholds_frame.columnconfigure(1, weight=1)
-        
+
         # Скорость скачивания
-        ttk.Label(thresholds_frame, text="Скорость скачивания:", font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=5)
-        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.download_threshold_var, width=6).grid(row=0, column=1, padx=5)
-        ttk.Label(thresholds_frame, text="% от средней", font=self.scale_font('Arial', 9)).grid(row=0, column=2, sticky='w')
-        
+        ttk.Label(thresholds_frame, text="Скорость скачивания:", 
+                 font=self.scale_font('Arial', 10)).grid(row=0, column=0, sticky='w', pady=5)
+        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.download_threshold_var, 
+                   width=6).grid(row=0, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="% от средней", 
+                 font=self.scale_font('Arial', 9)).grid(row=0, column=2, sticky='w')
+
         # Пинг
         ttk.Label(thresholds_frame, text="Пинг:", font=self.scale_font('Arial', 10)).grid(row=1, column=0, sticky='w', pady=5)
-        ttk.Spinbox(thresholds_frame, from_=0, to=500, textvariable=self.ping_threshold_var, width=6).grid(row=1, column=1, padx=5)
-        ttk.Label(thresholds_frame, text="% от средней", font=self.scale_font('Arial', 9)).grid(row=1, column=2, sticky='w')
-        
+        ttk.Spinbox(thresholds_frame, from_=0, to=500, textvariable=self.ping_threshold_var, 
+                   width=6).grid(row=1, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="% от средней", 
+                 font=self.scale_font('Arial', 9)).grid(row=1, column=2, sticky='w')
+
         # Джиттер (значение)
         ttk.Label(thresholds_frame, text="Джиттер:", font=self.scale_font('Arial', 10)).grid(row=2, column=0, sticky='w', pady=5)
-        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_threshold_var, width=6).grid(row=2, column=1, padx=5)
+        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_threshold_var, 
+                   width=6).grid(row=2, column=1, padx=5)
         ttk.Label(thresholds_frame, text="мс", font=self.scale_font('Arial', 9)).grid(row=2, column=2, sticky='w')
-        
+
         # Частота превышений джиттера
         jitter_freq_frame = ttk.Frame(thresholds_frame)
         jitter_freq_frame.grid(row=3, column=0, sticky='w', pady=5)
         
-        ttk.Label(jitter_freq_frame, text="Частота джиттера:", font=self.scale_font('Arial', 10)).pack(side='left')
+        ttk.Label(jitter_freq_frame, text="Частота джиттера:", 
+                 font=self.scale_font('Arial', 10)).pack(side='left')
         
         # Знак вопроса для частоты джиттера
-        jitter_freq_question = tk.Label(jitter_freq_frame, text="❓", font=('Arial', 10, 'bold'), fg="blue", cursor="hand2")
+        jitter_freq_question = tk.Label(jitter_freq_frame, text="❓", font=('Arial', 10, 'bold'), 
+                                       fg="blue", cursor="hand2")
         jitter_freq_question.pack(side='left', padx=(2, 0))
         jitter_freq_question.bind("<Button-1>", lambda e: self.show_term_explanation("jitter_frequency"))
         
-        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_frequency_var, width=6).grid(row=3, column=1, padx=5)
-        ttk.Label(thresholds_frame, text="% измерений", font=self.scale_font('Arial', 9)).grid(row=3, column=2, sticky='w')
+        ttk.Spinbox(thresholds_frame, from_=0, to=100, textvariable=self.jitter_frequency_var, 
+                   width=6).grid(row=3, column=1, padx=5)
+        ttk.Label(thresholds_frame, text="% измерений", 
+                 font=self.scale_font('Arial', 9)).grid(row=3, column=2, sticky='w')
 
         # === ПРАВЫЙ БЛОК: ОЧИСТКА ИСТОРИИ ===
         clean_frame = ttk.LabelFrame(horizontal_frame, text="Очистка истории измерений", padding=10)
@@ -2581,17 +2568,15 @@ class InternetSpeedMonitor:
         clean_row1 = ttk.Frame(clean_frame)
         clean_row1.pack(fill='x', pady=2)
         
-        self.clean_enabled_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(clean_row1, text="Авто-очистка старше", 
                        variable=self.clean_enabled_var).pack(side='left')
         
-        self.auto_clean_days_var = tk.IntVar(value=90)
         ttk.Spinbox(clean_row1, from_=30, to=365, increment=30, 
                    textvariable=self.auto_clean_days_var, width=6).pack(side='left', padx=5)
         ttk.Label(clean_row1, text="дней").pack(side='left')
         
         # Пояснение
-        ttk.Label(clean_frame, text="(0 = не удалять)", font=('Arial', 8), 
+        ttk.Label(clean_frame, text="(0 = не удалять)", font=self.scale_font('Arial', 8), 
                  foreground='gray').pack(anchor='w', pady=2)
         
         # Кнопка ручной очистки
@@ -2622,7 +2607,6 @@ class InternetSpeedMonitor:
         # Год
         ttk.Label(info_frame, text=f"© {datetime.now().year}", 
                  font=self.scale_font('Arial', 8)).pack(pady=(5, 0))
-
 
     def create_tray_icon(self):
         """Создание иконки в системном трее"""
@@ -2740,11 +2724,22 @@ class InternetSpeedMonitor:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
+
+            # === ОСНОВНЫЕ НАСТРОЙКИ ===
             cursor.execute("SELECT value FROM settings WHERE key='interval'")
             result = cursor.fetchone()
             if result:
                 self.interval_var.set(int(result[0]))
+
+            cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
+            result = cursor.fetchone()
+            if result:
+                self.auto_start_var.set(result[0] == '1')
+            
+            cursor.execute("SELECT value FROM settings WHERE key='minimize_to_tray'")
+            result = cursor.fetchone()
+            if result:
+                self.minimize_to_tray_var.set(result[0] == '1')
 
             cursor.execute("SELECT value FROM settings WHERE key='planned_speed'")
             result = cursor.fetchone()
@@ -2773,7 +2768,6 @@ class InternetSpeedMonitor:
             result = cursor.fetchone()
             if result:
                 self.jitter_frequency_var.set(int(result[0]))
-            # ===========================
 
             # === НАСТРОЙКИ ОЧИСТКИ ===
             cursor.execute("SELECT value FROM settings WHERE key='clean_enabled'")
@@ -2785,7 +2779,6 @@ class InternetSpeedMonitor:
             result = cursor.fetchone()
             if result:
                 self.auto_clean_days_var.set(int(result[0]))
-            # ========================
 
             # === ПРЕМИУМ-СТАТУС ===
             cursor.execute("SELECT value FROM settings WHERE key='premium_export'")
@@ -2794,23 +2787,16 @@ class InternetSpeedMonitor:
                 self.premium_export.set(result[0] == '1')
             else:
                 self.premium_export.set(False)
-            # ======================
-
-            cursor.execute("SELECT value FROM settings WHERE key='auto_start'")
-            result = cursor.fetchone()
-            if result:
-                self.auto_start_var.set(result[0] == '1')
-            
-            cursor.execute("SELECT value FROM settings WHERE key='minimize_to_tray'")
-            result = cursor.fetchone()
-            if result:
-                self.minimize_to_tray_var.set(result[0] == '1')
             
             conn.close()
             
-            # После загрузки всех настроек обновляем вкладку настроек
+            # Обновляем интерфейс после загрузки
             if hasattr(self, 'settings_frame'):
                 self._refresh_settings_tab()
+            
+            self.logger.info(f"Настройки загружены: интервал={self.interval_var.get()}, "
+                           f"автозапуск={self.auto_start_var.get()}, "
+                           f"трей={self.minimize_to_tray_var.get()}")
             
         except Error as e:
             self.logger.error(f"Ошибка загрузки настроек: {e}")
@@ -2825,13 +2811,15 @@ class InternetSpeedMonitor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Существующие настройки
+            # Сохраняем интервал
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('interval', str(self.interval_var.get())))
+
+            # Сохраняем заявленную скорость
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('planned_speed', str(self.planned_speed_var.get())))
 
-            # === НОВЫЕ ПОРОГИ ===
+            # === НАСТРАИВАЕМЫЕ ПОРОГИ ===
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('download_threshold', str(self.download_threshold_var.get())))
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
@@ -2840,20 +2828,26 @@ class InternetSpeedMonitor:
                          ('jitter_threshold', str(self.jitter_threshold_var.get())))
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('jitter_frequency', str(self.jitter_frequency_var.get())))
-            # ===================
+            # ===========================
 
             # === НАСТРОЙКИ ОЧИСТКИ ===
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('clean_enabled', '1' if self.clean_enabled_var.get() else '0'))
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('clean_days', str(self.auto_clean_days_var.get())))
+            # ========================
+
+            # === ПРЕМИУМ-СТАТУС ===
+            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                         ('premium_export', '1' if self.premium_export.get() else '0'))
+            # ======================
 
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('auto_start', '1' if self.auto_start_var.get() else '0'))
             cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('minimize_to_tray', '1' if self.minimize_to_tray_var.get() else '0'))
             
-            conn.commit()
+            conn.commit()  # ВАЖНО: подтверждаем изменения
             conn.close()
            
             self.update_autostart()
@@ -2878,15 +2872,16 @@ class InternetSpeedMonitor:
         
         # 1. Обновить интервал мониторинга
         if hasattr(self, 'running') and self.running:
-            # Если мониторинг запущен - перезапустим его с новым интервалом
             self.logger.info(f"Перезапуск мониторинга с новым интервалом: {self.interval_var.get()} мин")
             self.stop_monitoring()
-            # Небольшая задержка перед запуском
             self.root.after(500, self.start_monitoring)
         else:
             self.logger.info("Мониторинг не активен, интервал будет применен при следующем запуске")
         
-        # 2. Обновить название в трее (если нужно)
+        # 2. ПРИМЕНИТЬ НАСТРОЙКУ АВТОЗАПУСКА
+        self.update_autostart()
+        
+        # 3. Обновить название в трее (если нужно)
         if hasattr(self, 'tray_icon'):
             try:
                 self.tray_icon.title = "SpeedWatch - Мониторинг скорости"
@@ -2914,7 +2909,7 @@ class InternetSpeedMonitor:
                 0, winreg.KEY_SET_VALUE
             )
             
-            app_name = "InternetSpeedMonitor"
+            app_name = "SpeedWatch"
             
             if self.auto_start_var.get():
                 # Определяем путь к исполняемому файлу
@@ -2949,6 +2944,7 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
+
 # endregion
 
     def run_speed_test(self):
@@ -3973,7 +3969,6 @@ class InternetSpeedMonitor:
             if license_key:
                 self.premium_export.set(True)
                 self._save_premium_status()
-                print(f"DEBUG: premium_export = {self.premium_export.get()}")  # Временная отладка
                 # ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ ВКЛАДКУ НАСТРОЕК
                 self._refresh_settings_tab()
             
@@ -4027,7 +4022,6 @@ class InternetSpeedMonitor:
     def _refresh_settings_tab(self):
         """Обновление вкладки настроек"""
         try:
-            print(f"DEBUG: _refresh_settings_tab started, premium_export = {self.premium_export.get()}")
             
             # Находим текущую вкладку настроек и удаляем её содержимое
             for widget in self.settings_frame.winfo_children():
@@ -4036,10 +4030,8 @@ class InternetSpeedMonitor:
             # Пересоздаем вкладку настроек
             self.setup_settings_tab()
             
-            print("DEBUG: _refresh_settings_tab completed")
             self.logger.info("Вкладка настроек обновлена после активации премиум")
         except Exception as e:
-            print(f"DEBUG: Error in _refresh_settings_tab: {e}")
             self.logger.error(f"Ошибка обновления вкладки настроек: {e}")
 
     def _save_premium_status(self):
