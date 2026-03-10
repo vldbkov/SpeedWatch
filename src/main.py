@@ -577,10 +577,11 @@ class InternetSpeedMonitor:
                 timestamp = result[0]
                 # Форматируем дату из "YYYY-MM-DD HH:MM:SS.ffffff" в "DD.MM.YY HH:MM"
                 try:
-                    if timestamp and isinstance(timestamp, str):
+                if timestamp and isinstance(timestamp, str):
+                    try:
                         dt = datetime.strptime(timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
                         return dt.strftime('%d.%m.%y %H:%M')
-                    else:
+                    except:
                         return "Нет данных"
                 except:
                     return "Нет данных"
@@ -3220,7 +3221,7 @@ class InternetSpeedMonitor:
                  server_city, server_provider, client_ip, client_provider, connection_type) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'), 
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 download, upload, ping, jitter, server,
                 server_city, server_provider, client_ip, client_provider, connection_type
             ))
