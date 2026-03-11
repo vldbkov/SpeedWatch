@@ -184,7 +184,6 @@ class InternetSpeedMonitor:
         # Настройка окна
         self.root.title("SpeedWatch - Мониторинг скорости интернета")
         self.root.geometry(f"{scaled_width}x{scaled_height}")
-
        
         # Убираем окно из панели задач при сворачивании в трей
         self.root.attributes('-toolwindow', 0)  # Обычное окно
@@ -280,6 +279,14 @@ class InternetSpeedMonitor:
         self.graph_month_var = tk.StringVar()
         self.graph_year_var = tk.StringVar(value=str(datetime.now().year))
 
+        # === ВАЛИДНОСТЬ ЗАПИСЕЙ ===
+        self.valid_combinations = [
+            ['download_speed', 'upload_speed', 'ping'],  # минимум 3 показателя
+            ['download_speed', 'upload_speed', 'ping', 'jitter']  # все 4
+        ]
+        self.invalid_records_count = 0
+        self.invalid_records_ids = []
+
         # === ОЧИСТКА ИСТОРИИ ===
         self.clean_enabled_var = tk.BooleanVar(value=True)
         self.auto_clean_days_var = tk.IntVar(value=90)
@@ -359,7 +366,10 @@ class InternetSpeedMonitor:
         else:
             self.root.after(2000, self.analyze_connection_quality)
             self.root.after(3000, self._check_updates_auto)
-        
+
+        # Анализ валидности записей (с задержкой после загрузки)
+        self.root.after(5000, self.analyze_records_validity)
+
         self.started_in_tray = True        
         
         # Скрываем консоль после создания трея
@@ -399,6 +409,136 @@ class InternetSpeedMonitor:
                     self.logger.error(f"Не удалось удалить пустой файл БД: {rm_err}")
             
             return None
+
+    def is_record_valid(self, download, upload, ping, jitter):
+        """Проверка валидности записи (должно быть минимум 3 показателя)"""
+        count = 0
+        if download is not None and download > 0:
+            count += 1
+        if upload is not None and upload > 0:
+            count += 1
+        if ping is not None and ping > 0:
+            count += 1
+        if jitter is not None and jitter >= 0:
+            count += 1
+        
+        return count >= 3  # минимум 3 показателя
+
+    def analyze_records_validity(self):
+        """Анализ всех записей в БД на валидность"""
+        try:
+            db = self.get_db()
+            if not db:
+                return
+            
+            db.execute('''
+                SELECT id, download_speed, upload_speed, ping, jitter 
+                FROM speed_measurements
+            ''')
+            rows = db.cursor.fetchall()
+            db.close()
+            
+            invalid_ids = []
+            for row in rows:
+                record_id, download, upload, ping, jitter = row
+                if not self.is_record_valid(download, upload, ping, jitter):
+                    invalid_ids.append(record_id)
+            
+            self.invalid_records_count = len(invalid_ids)
+            self.invalid_records_ids = invalid_ids
+            
+            self.logger.info(f"Найдено невалидных записей: {self.invalid_records_count}")
+            
+            # Обновляем отображение значка в журнале
+            self.root.after(0, self.update_invalid_records_indicator)
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка анализа валидности записей: {e}")
+
+    def update_invalid_records_indicator(self):
+        """Обновление индикатора невалидных записей на вкладке Журнал"""
+        try:
+            if not hasattr(self, 'invalid_indicator_frame'):
+                return
+            
+            # Очищаем старый индикатор
+            for widget in self.invalid_indicator_frame.winfo_children():
+                widget.destroy()
+            
+            if self.invalid_records_count > 0:
+                # Создаем красный значок с восклицательным знаком
+                invalid_btn = tk.Button(
+                    self.invalid_indicator_frame,
+                    text=f"⚠️ {self.invalid_records_count}",
+                    fg="white",
+                    bg="red",
+                    font=('Arial', 9, 'bold'),
+                    relief="raised",
+                    bd=1,
+                    cursor="hand2",
+                    command=self.show_invalid_records_dialog
+                )
+                invalid_btn.pack()
+            else:
+                # Если нет невалидных записей, показываем пустой индикатор
+                tk.Label(self.invalid_indicator_frame, text="").pack()
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка обновления индикатора: {e}")
+
+    def show_invalid_records_dialog(self):
+        """Показать диалог с предложением удалить невалидные записи"""
+        if self.invalid_records_count == 0:
+            return
+        
+        result = messagebox.askyesno(
+            "Неполные измерения",
+            f"В журнале обнаружено {self.invalid_records_count} записей\n"
+            "с неполными данными (менее 3 показателей).\n\n"
+            "Эти записи могли появиться при проблемах с интернетом\n"
+            "или при преждевременном прерывании теста.\n\n"
+            "Желаете удалить эти записи из журнала?",
+            icon='warning'
+        )
+        
+        if result:
+            self.delete_invalid_records()
+
+    def delete_invalid_records(self):
+        """Удаление невалидных записей из БД"""
+        try:
+            if not self.invalid_records_ids:
+                return
+            
+            db = self.get_db()
+            if not db:
+                return
+            
+            # Удаляем записи по ID
+            placeholders = ','.join(['?'] * len(self.invalid_records_ids))
+            db.execute(f'DELETE FROM speed_measurements WHERE id IN ({placeholders})', 
+                      self.invalid_records_ids)
+            deleted = db.cursor.rowcount
+            db.commit()
+            db.close()
+            
+            self.logger.info(f"Удалено {deleted} невалидных записей")
+            
+            # Обновляем счетчик
+            self.invalid_records_count = 0
+            self.invalid_records_ids = []
+            
+            # Обновляем индикатор
+            self.update_invalid_records_indicator()
+            
+            # Обновляем журнал
+            self.update_log()
+            
+            messagebox.showinfo("Очистка", f"Удалено {deleted} неполных записей")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка удаления невалидных записей: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось удалить записи: {e}")
 
     def check_database_migration(self):
         """Проверка необходимости миграции на зашифрованную БД"""
@@ -2040,13 +2180,16 @@ class InternetSpeedMonitor:
         log_control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
         # Кнопки управления журналом
-        ttk.Button(log_control_frame, text="Обновить", command=self.update_log).pack(side='left', padx=5)
+        button_frame = ttk.Frame(log_control_frame)
+        button_frame.pack(side='left')
+        
+        ttk.Button(button_frame, text="Обновить", command=self.update_log).pack(side='left', padx=5)
         
         # Кнопка экспорта CSV (премиум)
         if self.premium_export.get():
-            export_csv_btn = ttk.Button(log_control_frame, text="Экспорт в CSV", command=self.export_log)
+            export_csv_btn = ttk.Button(button_frame, text="Экспорт в CSV", command=self.export_log)
         else:
-            export_csv_btn = tk.Button(log_control_frame, text="📊 Экспорт в CSV\n(Premium)", 
+            export_csv_btn = tk.Button(button_frame, text="📊 Экспорт в CSV\n(Premium)", 
                                        command=self.export_log,
                                        fg="#D4AF37",
                                        bg="#2C2C2C",
@@ -2061,8 +2204,16 @@ class InternetSpeedMonitor:
                                        cursor="hand2")
         export_csv_btn.pack(side='left', padx=5)
         
-        ttk.Button(log_control_frame, text="Очистить журнал", command=self.clear_log).pack(side='left', padx=5)
+        # Кнопка очистки журнала с переносом текста
+        clear_btn = tk.Button(button_frame, text="Очистить\nжурнал", command=self.clear_log,
+                             font=('Arial', 9), width=8, height=2,
+                             bg='#f0f0f0', relief='raised')
+        clear_btn.pack(side='left', padx=5)
         
+        # Фрейм для индикатора невалидных записей (СРАЗУ СПРАВА от кнопки)
+        self.invalid_indicator_frame = ttk.Frame(button_frame)
+        self.invalid_indicator_frame.pack(side='left', padx=(5, 0))
+
         # Поля выбора периода с календарем
         ttk.Label(log_control_frame, text="Период с:").pack(side='left', padx=(20, 5))
         
@@ -2096,10 +2247,22 @@ class InternetSpeedMonitor:
         )
         self.date_to_entry.pack(side='left')
         
-        # Кнопки управления
-        ttk.Button(log_control_frame, text="Применить", command=self.update_log).pack(side='left', padx=5)
-        ttk.Button(log_control_frame, text="Сбросить", command=self.reset_date_filter).pack(side='left', padx=5)
+        # КОНТЕЙНЕР ДЛЯ КНОПОК ПОД КАЛЕНДАРЕМ
+        button_filter_frame = ttk.Frame(log_control_frame)
+        button_filter_frame.pack(side='left', padx=(10, 0))
         
+        # Кнопка "Применить"
+        apply_btn = tk.Button(button_filter_frame, text="Применить", command=self.update_log,
+                             font=('Arial', 9), width=10, height=1,
+                             bg='#f0f0f0', relief='raised')
+        apply_btn.pack(side='top', pady=2)
+        
+        # Кнопка "Сбросить"
+        reset_btn = tk.Button(button_filter_frame, text="Сбросить", command=self.reset_date_filter,
+                             font=('Arial', 9), width=10, height=1,
+                             bg='#f0f0f0', relief='raised')
+        reset_btn.pack(side='top', pady=2)
+                
         # Панель со средними значениями
         avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=self.scale_value(15))
         avg_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
@@ -2158,7 +2321,10 @@ class InternetSpeedMonitor:
         # Создаем Treeview для журнала
         self.log_tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
                                     yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        ###
+
+        # Настройка тега для невалидных записей (желтый фон)
+        self.log_tree.tag_configure('invalid_record', background='#FFFACD')  # светло-желтый
+
         # Настройка тегов для отдельных колонок (красный цвет для конкретных значений)
         self.log_tree.tag_configure('low_download', foreground='red')
         self.log_tree.tag_configure('low_upload', foreground='red')
@@ -3512,7 +3678,6 @@ class InternetSpeedMonitor:
         # После завершения очищаем строку
         print("\r" + " " * 30 + "\r", end='', flush=True)
 # endregion
-
     def save_test_results(self, download, upload, ping, jitter, server, server_city="", server_provider="", 
                           client_ip="", client_provider="", connection_type=""):
         """Сохранение результатов теста в БД"""
@@ -3579,16 +3744,18 @@ class InternetSpeedMonitor:
             self.logger.info(f"UI обновлен: провайдер={client_provider}, тип={connection_type}")
             
         except Exception as e:
-            self.logger.error(f"Ошибка сохранения результатов: {e}")
-#           self.root.after(0, self.update_graph)
-            
+            self.logger.error(f"Ошибка сохранения результатов: {e}")           
             self.logger.info(f"Сохранены результаты: Download={download}, Upload={upload}, Ping={ping}, Jitter={jitter}")
             self.logger.info(f"UI обновлен: провайдер={client_provider}, тип={connection_type}")
-            
+
+            # Проверяем валидность сохраненной записи
+            if not self.is_record_valid(download, upload, ping, jitter):
+                self.logger.warning(f"Сохранена НЕвалидная запись: D={download}, U={upload}, P={ping}, J={jitter}")
+
         except Exception as e:
             self.logger.error(f"Ошибка сохранения результатов: {e}")
-
 # region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
+
     def start_monitoring(self):
         """Запуск периодического мониторинга"""
         if self.running:
@@ -3793,6 +3960,12 @@ class InternetSpeedMonitor:
                     tags.append('high_jitter')
                     jitter_str = f"▲{jitter_str}"
                 
+                # Проверяем валидность записи
+                is_valid = self.is_record_valid(row[2], row[3], row[4], row[5])
+                
+                if not is_valid:
+                    tags.append('invalid_record')
+                
                 # Убираем дубликаты тегов
                 tags = list(set(tags))
                 
@@ -3807,7 +3980,7 @@ class InternetSpeedMonitor:
                 )
                 
                 # Вставляем строку ТОЛЬКО ОДИН РАЗ
-                self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
+                item_id = self.log_tree.insert('', 'end', values=formatted_row, tags=tuple(tags))
 
             db.close()
             
