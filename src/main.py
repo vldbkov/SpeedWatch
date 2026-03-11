@@ -318,7 +318,6 @@ class InternetSpeedMonitor:
         # self.clean_old_records()  # Временно отключаем
 
         # После загрузки настроек
-        self.is_first_load = False
         self.update_log()
         
         # Для EXE режима - принудительно показываем окно при первом запуске
@@ -336,8 +335,11 @@ class InternetSpeedMonitor:
         # При закрытии окна - сворачиваем в трей
         self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)        
         
-        # Сворачиваем в трей если включена настройка
-        if self.minimize_to_tray_var.get():
+        # При первом запуске всегда показываем окно
+        if self.is_first_load:
+            self.show_window()
+        # При последующих запусках - как настроено
+        elif self.minimize_to_tray_var.get():
             self.minimize_to_tray()
 
         # Обновляем меню трея
@@ -364,6 +366,9 @@ class InternetSpeedMonitor:
         
         # ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ИНТЕРФЕЙС
         self.root.update()
+        
+        # Сбрасываем флаг ПОСЛЕ всех проверок первого запуска
+        self.is_first_load = False
 
     def get_db(self):
         """Получение соединения с зашифрованной БД"""
