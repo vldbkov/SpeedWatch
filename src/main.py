@@ -348,8 +348,12 @@ class InternetSpeedMonitor:
         except Exception:
             pass
 
-        # При автозапуске даем сети время инициализироваться
-        if self.auto_start_var.get():
+        # При первом запуске всегда запускаем мониторинг
+        if self.is_first_load:
+            self.logger.info("Первый запуск: запускаем мониторинг через 2 секунды...")
+            self.root.after(2000, self.start_monitoring)
+        # При последующих запусках - как настроено
+        elif self.auto_start_var.get():
             self.logger.info("Автозапуск: ждем 15 секунд для инициализации сети...")
             self.root.after(15000, self.start_monitoring)
         else:
