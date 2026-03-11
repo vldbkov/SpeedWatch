@@ -151,7 +151,8 @@ def get_dpi_scale_factor():
 class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
-        
+        self.root.update()  # Сразу обновляем интерфейс
+       
         # Определяем корневую директорию проекта
         if getattr(sys, 'frozen', False):
             self.base_dir = os.path.dirname(sys.executable)
@@ -166,11 +167,9 @@ class InternetSpeedMonitor:
         # Создаем директорию для данных
         os.makedirs(self.data_dir, exist_ok=True)
 
-        print("[DEBUG] InternetSpeedMonitor __init__ started")
         try:
             self.dpi_scale = get_dpi_scale_factor()
         except Exception as e:
-            print(f"[DEBUG] Ошибка в __init__: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -185,7 +184,8 @@ class InternetSpeedMonitor:
         # Настройка окна
         self.root.title("SpeedWatch - Мониторинг скорости интернета")
         self.root.geometry(f"{scaled_width}x{scaled_height}")
-        
+
+       
         # Убираем окно из панели задач при сворачивании в трей
         self.root.attributes('-toolwindow', 0)  # Обычное окно
         
@@ -315,7 +315,7 @@ class InternetSpeedMonitor:
         self.load_last_measurement()
 
         # Очистка старых записей при запуске
-        self.clean_old_records()
+        # self.clean_old_records()  # Временно отключаем
 
         # После загрузки настроек
         self.is_first_load = False
@@ -361,6 +361,9 @@ class InternetSpeedMonitor:
         
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
+        
+        # ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ИНТЕРФЕЙС
+        self.root.update()
 
     def get_db(self):
         """Получение соединения с зашифрованной БД"""
@@ -1113,7 +1116,16 @@ class InternetSpeedMonitor:
             # Дата неделю назад
             week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
             
-            # Получаем средние значения за неделю
+            # СНАЧАЛА проверяем количество записей (легкий запрос)
+            db.execute("SELECT COUNT(*) FROM speed_measurements WHERE timestamp >= ?", (week_ago,))
+            count = db.cursor.fetchone()[0]
+            
+            if count < 3:
+                self.logger.info(f"Недостаточно данных для анализа (найдено {count}, нужно минимум 3)")
+                db.close()
+                return
+            
+            # ТОЛЬКО ПОТОМ выполняем тяжелые запросы с AVG
             db.execute('''
                 SELECT 
                     AVG(download_speed) as avg_download,
@@ -1121,18 +1133,12 @@ class InternetSpeedMonitor:
                     AVG(ping) as avg_ping,
                     AVG(jitter) as avg_jitter,
                     COUNT(*) as measurements_count
-                FROM speed_measurements 
+               FROM speed_measurements 
                 WHERE timestamp >= ?
             ''', (week_ago,))
             
             result = db.cursor.fetchone()
-            
-            if not result or not result[0] or result[4] < 3:  # Минимум 3 измерения
-                self.logger.info("Недостаточно данных для анализа (меньше 3 измерений за неделю)")
-                db.close()
-                return
-            
-            avg_download, avg_upload, avg_ping, avg_jitter, count = result
+            avg_download, avg_upload, avg_ping, avg_jitter = result
             
             # Получаем процент измерений с высоким джиттером
             db.execute('''
@@ -1402,11 +1408,12 @@ class InternetSpeedMonitor:
                 relief='raised'
             )
             ok_button.pack(pady=(10, 0))
-            
+
             self.logger.info("Окно 'О программе' успешно создано")
-            
+       
         except Exception as e:
             self.logger.error(f"Ошибка создания окна 'О программе': {e}")
+
     def check_for_updates(self):
         """Проверка наличия обновлений на GitHub"""
         try:
@@ -3445,6 +3452,7 @@ class InternetSpeedMonitor:
             
             import gc
             gc.collect()
+
     def _update_ui_with_results(self, download, upload, ping, jitter, server):
         """Обновление интерфейс с результатами"""
         self.download_var.set(f"{download:.2f} Mbps")
@@ -4540,21 +4548,16 @@ def check_if_already_running():
     """Проверка через файловую блокировку - не запущено ли уже приложение"""
     global _lock_file
     
-    print(f"[DEBUG] Текущий PID: {os.getpid()}")
-    
     # Проверяем существующий файл лока
     if os.path.exists(_lock_file_path):
         try:
             with open(_lock_file_path, 'r') as f:
                 old_pid = f.read().strip()
-            print(f"[DEBUG] Найден файл лока с PID: {old_pid}")
             
             # Проверяем, существует ли процесс с этим PID
             try:
                 os.kill(int(old_pid), 0)  # Сигнал 0 только проверяет существование
-                print(f"[DEBUG] Процесс {old_pid} существует")
             except OSError:
-                print(f"[DEBUG] Процесс {old_pid} не существует, удаляем старый лок")
                 os.remove(_lock_file_path)
         except:
             pass
@@ -4565,13 +4568,11 @@ def check_if_already_running():
     try:
         if sys.platform == 'win32':
             import msvcrt
-            print(f"[DEBUG] Попытка захватить файловый лок: {_lock_file_path}")
             
             # Проверяем время создания файла лока
             if os.path.exists(_lock_file_path):
                 file_time = os.path.getmtime(_lock_file_path)
                 if time.time() - file_time < 2:  # Если файл создан менее 2 секунд назад
-                    print(f"[DEBUG] Файл лока слишком свежий ({(time.time()-file_time):.1f} сек), ждем...")
                     time.sleep(1)
             
             # Открываем файл для добавления/чтения
@@ -4581,32 +4582,26 @@ def check_if_already_running():
                 # Пытаемся захватить эксклюзивный лок на первый байт
                 msvcrt.locking(lock_f.fileno(), msvcrt.LK_NBLCK, 1)
                 # Успешно захватили - других экземпляров нет
-                print(f"[DEBUG] Лок захвачен успешно, процесс может продолжать")
                 _lock_file = lock_f  # Сохраняем файл - держим блокировку
                 return False  # Возвращаем False = нет других запущенных экземпляров
             except (OSError, IOError, BlockingIOError) as e:
                 # Не удалось захватить лок - другой процесс его удерживает
-                print(f"[DEBUG] Лок уже занят другим процессом: {e}")
                 lock_f.close()
                 return True  # Возвращаем True = приложение уже запущено
         else:
             # Unix
             import fcntl
-            print(f"[DEBUG] Попытка захватить файловый лок (Unix): {_lock_file_path}")
             
             lock_f = open(_lock_file_path, 'w')
             try:
                 fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                print(f"[DEBUG] Лок захвачен успешно, процесс может продолжать")
                 _lock_file = lock_f
                 return False
             except IOError as e:
-                print(f"[DEBUG] Лок уже занят другим процессом: {e}")
                 lock_f.close()
                 return True
     
     except Exception as e:
-        print(f"[DEBUG] Ошибка при проверке лока: {e}")
         # Если ошибка - даем разрешение на запуск (лучше двойной запуск, чем запирание)
         return False
 # endregion
@@ -4625,11 +4620,6 @@ TEST_MODE = ARGS.test_mode
 
 def main():
     global _lock_file
-
-    # Диагностика автозапуска
-    safe_print(f"[DEBUG] Запуск из: {os.path.abspath(sys.argv[0])}")
-    safe_print(f"[DEBUG] Рабочая директория: {os.getcwd()}")
-    safe_print(f"[DEBUG] Python: {sys.executable}")
 
     # Тестовый режим - быстрая проверка работоспособности
     if TEST_MODE:
@@ -4726,17 +4716,15 @@ def main():
                 
                 _lock_file.close()
                 _lock_file = None
-                safe_print("[DEBUG] Лок освобожден при выходе")
             except Exception as e:
-                safe_print(f"[DEBUG] Ошибка освобождения лока: {e}")
+                pass  # ← БЫЛО ПУСТО, ДОБАВИЛ pass
         
         # Гарантированно удаляем файл лока
         try:
             if os.path.exists(_lock_file_path):
                 os.remove(_lock_file_path)
-                safe_print(f"[DEBUG] Файл лока удален: {_lock_file_path}")
         except Exception as e:
-            safe_print(f"[DEBUG] Ошибка удаления файла лока: {e}")
+            pass  # ← ТОЖЕ ДОБАВИЛ pass, если нужно
 
 
 if __name__ == "__main__":
