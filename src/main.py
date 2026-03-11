@@ -663,16 +663,16 @@ class InternetSpeedMonitor:
         try:
             self.logger.info("Проверка целостности базы данных...")
             
-            # Используем обычный sqlite3 для проверки, так как PRAGMA integrity_check работает одинаково
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            # Используем get_db для получения соединения с зашифрованной БД
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для проверки целостности")
+                return False
             
-            # Выполняем проверку целостности
-            cursor.execute("PRAGMA integrity_check")
-            result = cursor.fetchone()
-            
-            # Закрываем соединение
-            conn.close()
+            # Выполняем проверку целостности (PRAGMA работает с любой БД)
+            db.execute("PRAGMA integrity_check")
+            result = db.cursor.fetchone()
+            db.close()
             
             # Анализируем результат (без Unicode символов)
             if result and result[0] == "ok":
@@ -2567,11 +2567,13 @@ class InternetSpeedMonitor:
             if not start_date:
                 return None
             
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для получения статистики")
+                return None
             
             # Получаем статистику за период
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     COUNT(*) as count,
                     AVG(download_speed) as avg_download,
@@ -2587,10 +2589,10 @@ class InternetSpeedMonitor:
                 WHERE timestamp BETWEEN ? AND ?
             ''', (start_date, end_date))
             
-            result = cursor.fetchone()
+            result = db.cursor.fetchone()
             
             # Получаем измерения для анализа по часам и дням
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     strftime('%H', timestamp) as hour,
                     AVG(download_speed) as avg_speed,
@@ -2602,9 +2604,9 @@ class InternetSpeedMonitor:
                 ORDER BY avg_speed ASC
             ''', (start_date, end_date))
             
-            hourly_data = cursor.fetchall()
+            hourly_data = db.cursor.fetchall()
             
-            cursor.execute('''
+            db.execute('''
                 SELECT 
                     strftime('%w', timestamp) as day_of_week,
                     strftime('%Y-%m-%d', timestamp) as day,
@@ -2617,9 +2619,9 @@ class InternetSpeedMonitor:
                 ORDER BY avg_speed ASC
             ''', (start_date, end_date))
             
-            daily_data = cursor.fetchall()
+            daily_data = db.cursor.fetchall()
             
-            conn.close()
+            db.close()
             
             if not result or not result[0] or result[0] < 1:
                 return None
@@ -4393,12 +4395,15 @@ class InternetSpeedMonitor:
     def _save_premium_status(self):
         """Сохранение статуса премиум-активации в настройках"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для сохранения премиум-статуса")
+                return
+            
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('premium_export', '1' if self.premium_export.get() else '0'))
-            conn.commit()
-            conn.close()
+            db.commit()
+            db.close()
             self.logger.info("Статус премиум-доступа сохранен")
         except Exception as e:
             self.logger.error(f"Ошибка сохранения статуса премиум: {e}")
@@ -4408,11 +4413,14 @@ class InternetSpeedMonitor:
         if messagebox.askyesno("Подтверждение", 
                               "Вы уверены, что хотите очистить весь журнал?\nЭта операция необратима."):
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM speed_measurements')
-                conn.commit()
-                conn.close()
+                db = self.get_db()
+                if not db:
+                    self.logger.error("Не удалось подключиться к БД для очистки журнала")
+                    return
+                
+                db.execute('DELETE FROM speed_measurements')
+                db.commit()
+                db.close()
                 
                 # СБРАСЫВАЕМ ПОКАЗАНИЯ НА ВКЛАДКЕ МОНИТОРИНГ
                 self.download_var.set("0 Mbps")
