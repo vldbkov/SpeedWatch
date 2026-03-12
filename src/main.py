@@ -1429,8 +1429,12 @@ class InternetSpeedMonitor:
     def show_about_window(self):
         """Показать окно 'О программе'"""
         try:
-            # Создаем окно
-            about_window = tk.Toplevel(self.root)
+            # Создаем окно (если главное скрыто - создаем независимое)
+            if self.root.state() == 'withdrawn' or not self.root.winfo_viewable():
+                about_window = tk.Toplevel()  # независимое окно
+            else:
+                about_window = tk.Toplevel(self.root)  # зависимое от главного
+            
             about_window.title("О программе")
             
             # ФИКСИРОВАННЫЕ РАЗМЕРЫ
@@ -1440,22 +1444,36 @@ class InternetSpeedMonitor:
             about_window.geometry(f"{window_width}x{window_height}")
             about_window.resizable(False, False)
             
-            # Делаем окно модальным
-            about_window.transient(self.root)
-            about_window.grab_set()
-            
             # Центрируем по центру ЭКРАНА (не главного окна)
-            screen_width = about_window.winfo_screenwidth()
-            screen_height = about_window.winfo_screenheight()
+            about_window.update_idletasks()
+            
+            # Получаем размеры экрана через главное окно или напрямую
+            try:
+                screen_width = self.root.winfo_screenwidth()
+                screen_height = self.root.winfo_screenheight()
+            except:
+                # Если не получается через главное окно, используем about_window
+                screen_width = about_window.winfo_screenwidth()
+                screen_height = about_window.winfo_screenheight()
             
             x = (screen_width - window_width) // 2
-            y = (screen_height - window_height) // 2
-            
+            y = (screen_height - window_height) // 2            
             about_window.geometry(f"+{x}+{y}")
+            
+            # Дополнительно обновляем позицию
+            about_window.update()
+            
+            # Делаем окно модальным (только если главное окно видимо)
+            if self.root.state() != 'withdrawn' and self.root.winfo_viewable():
+                about_window.transient(self.root)
+                about_window.grab_set()
+            
+            about_window.focus_force()
             
             # Принудительно поднимаем окно
             about_window.lift()
-            about_window.focus_force()
+            about_window.attributes('-topmost', True)
+            about_window.after(100, lambda: about_window.attributes('-topmost', False))
             
             # Основной контейнер
             main_frame = ttk.Frame(about_window, padding="20")
@@ -1484,6 +1502,7 @@ class InternetSpeedMonitor:
                 text=f"Версия {__version__}",
                 font=('Arial', 11, 'bold')
             )
+
             version_label.pack(pady=(0, 15))
             
             # Пожелание
@@ -1534,9 +1553,9 @@ class InternetSpeedMonitor:
                 relief='raised'
             )
             ok_button.pack(pady=(10, 0))
-
+            
             self.logger.info("Окно 'О программе' успешно создано")
-       
+            
         except Exception as e:
             self.logger.error(f"Ошибка создания окна 'О программе': {e}")
 
