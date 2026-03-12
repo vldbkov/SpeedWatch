@@ -8,6 +8,7 @@ venv/
 
 generate_key.py
 issued_keys.json
+check_provider.py
 
 # === Системные файлы Python ===
 __pycache__/
