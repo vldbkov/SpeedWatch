@@ -9,6 +9,7 @@ venv/
 generate_key.py
 issued_keys.json
 reset_premium_sqlcipher.py
+check_provider.py
 
 # === Системные файлы Python ===
 __pycache__/
