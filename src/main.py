@@ -238,7 +238,10 @@ class InternetSpeedMonitor:
 
         # Управление консолью
         self.console_visible = False  # Начинаем со скрытой консоли
+        
+        # Создаем консоль, но сразу скрываем
         self.setup_console()
+        self.hide_console_on_start()  # Принудительно скрываем при старте
         
         # === ВСЕ ПЕРЕМЕННЫЕ ИНТЕРФЕЙСА ДОЛЖНЫ БЫТЬ ЗДЕСЬ (ДО ЗАГРУЗКИ НАСТРОЕК) ===
         self.download_var = tk.StringVar(value="0 Mbps")
@@ -1763,13 +1766,14 @@ class InternetSpeedMonitor:
             user32 = ctypes.WinDLL('user32', use_last_error=True)
             kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
             
-            # Получаем актуальный хендл
+            # Получаем актуальный хендл консоли
             current_hwnd = kernel32.GetConsoleWindow()
             
             if current_hwnd:
                 user32.ShowWindow(current_hwnd, 0)  # SW_HIDE
                 self.hwnd = current_hwnd
                 self.console_visible = False
+                self.logger.info("Консоль скрыта при старте")
         except Exception as e:
             self.logger.error(f"Ошибка скрытия консоли при старте: {e}")
 # endregion
