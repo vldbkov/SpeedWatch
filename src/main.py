@@ -2204,10 +2204,8 @@ class InternetSpeedMonitor:
                                        cursor="hand2")
         export_csv_btn.pack(side='left', padx=5)
         
-        # Кнопка очистки журнала с переносом текста
-        clear_btn = tk.Button(button_frame, text="Очистить\nжурнал", command=self.clear_log,
-                             font=('Arial', 9), width=8, height=2,
-                             bg='#f0f0f0', relief='raised')
+        # Кнопка очистки журнала
+        clear_btn = ttk.Button(button_frame, text="Очистить\n журнал", command=self.clear_log, width=8)
         clear_btn.pack(side='left', padx=5)
         
         # Фрейм для индикатора невалидных записей (СРАЗУ СПРАВА от кнопки)
