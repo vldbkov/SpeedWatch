@@ -1078,13 +1078,14 @@ class InternetSpeedMonitor:
             if all(col in columns for col in ['server_city', 'server_provider', 'client_ip']):
                 db.execute('''
                     SELECT download_speed, upload_speed, ping, jitter, 
-                           server, server_city, server_provider, client_ip 
+                           server, server_city, server_provider, client_ip,
+                           client_provider, connection_type 
                     FROM speed_measurements 
                     ORDER BY timestamp DESC LIMIT 1
                 ''')
                 result = db.cursor.fetchone()
                 if result:
-                    download, upload, ping, jitter, server, server_city, server_provider, client_ip = result
+                    download, upload, ping, jitter, server, server_city, server_provider, client_ip, client_provider, connection_type = result
                     self.download_var.set(f"{download:.2f} Mbps" if download else "0 Mbps")
                     self.upload_var.set(f"{upload:.2f} Mbps" if upload else "0 Mbps")
                     self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
@@ -1092,6 +1093,11 @@ class InternetSpeedMonitor:
                     
                     # Обновляем информацию о сервере
                     self.server_info_var.set(server if server else "—")
+                    
+                    # Обновляем информацию о подключении из БД
+                    self.provider_var.set(client_provider if client_provider else "—")
+                    self.ip_address_var.set(client_ip if client_ip else "—")
+                    self.connection_type_var.set(connection_type if connection_type else "—")
                     
                     # Все поля подключения оставляем пустыми
                     self.provider_var.set("—")
@@ -2808,6 +2814,36 @@ class InternetSpeedMonitor:
             
             daily_data = db.cursor.fetchall()
             
+            # РАСЧЕТ ОБЩЕГО КОЛИЧЕСТВА ЧАСОВ В ПЕРИОДЕ
+            from datetime import datetime, timedelta
+            try:
+                # Преобразуем строки в datetime
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d %H:%M:%S')
+                
+                # Общее количество часов в периоде
+                total_hours = int((end_dt - start_dt).total_seconds() / 3600) + 1
+                
+                # Среднее количество измерений в час
+                if result and result[0] and result[0] > 0:
+                    measurements_per_hour = result[0] / total_hours
+                else:
+                    measurements_per_hour = 0
+                    
+            except Exception as e:
+                self.logger.error(f"Ошибка расчета часов в периоде: {e}")
+                total_hours = 0
+                measurements_per_hour = 0
+            
+            # Получаем информацию о провайдере и IP за период (из последней записи)
+            db.execute('''
+                SELECT client_provider, client_ip, connection_type
+                FROM speed_measurements 
+                WHERE timestamp BETWEEN ? AND ?
+                ORDER BY timestamp DESC LIMIT 1
+            ''', (start_date, end_date))
+            
+            provider_row = db.cursor.fetchone()
             db.close()
             
             if not result or not result[0] or result[0] < 1:
@@ -2825,6 +2861,11 @@ class InternetSpeedMonitor:
                 'min_ping': result[7],
                 'avg_jitter': result[8],
                 'max_jitter': result[9],
+                'client_provider': provider_row[0] if provider_row and provider_row[0] else "—",
+                'client_ip': provider_row[1] if provider_row and provider_row[1] else "—",
+                'connection_type': provider_row[2] if provider_row and provider_row[2] else "—",
+                'total_hours': total_hours,
+                'measurements_per_hour': measurements_per_hour,
                 'hourly': hourly_data,
                 'daily': daily_data
             }
@@ -2948,17 +2989,85 @@ class InternetSpeedMonitor:
         try:
             # Проверяем премиум-доступ
             if not self.premium_export.get():
-                show_premium_dialog(self.root, lambda key: self._generate_report(key))
+                show_premium_dialog(self.root, lambda key: self._show_format_dialog(key))
                 return
             
-            self._generate_report(None)
+            self._show_format_dialog(None)
             
         except Exception as e:
             self.logger.error(f"Ошибка экспорта отчета: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать отчет: {e}")
-    
-    def _generate_report(self, license_key):
-        """Генерация и сохранение отчета"""
+
+    def _show_format_dialog(self, license_key):
+        """Диалог выбора формата отчета"""
+        # Сначала проверяем наличие данных
+        stats = self.get_stats_for_period()
+        if not stats:
+            messagebox.showinfo("Отчет", "Нет данных за выбранный период")
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Выбор формата")
+        dialog.geometry("350x250")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Центрируем
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 350) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 250) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Заголовок
+        ttk.Label(dialog, text="Выберите формат отчета", 
+                 font=('Arial', 12, 'bold')).pack(pady=15)
+        
+        # Информация о периоде
+        period_name = self._get_period_name()
+        ttk.Label(dialog, text=f"Период: {period_name}", 
+                 font=('Arial', 9)).pack(pady=(0, 10))
+        
+        # Кнопки форматов
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(expand=True, fill='both', padx=20)
+        
+        def select_format(format_type):
+            dialog.destroy()
+            self._generate_report(license_key, format_type)
+        
+        # HTML кнопка
+        html_btn = tk.Button(btn_frame, text="🌐 HTML (для браузера)", 
+                            command=lambda: select_format('html'),
+                            bg='#4CAF50', fg='white',
+                            activebackground='#45a049',
+                            font=('Arial', 10, 'bold'),
+                            relief='raised', bd=2,
+                            height=1, cursor='hand2')
+        html_btn.pack(pady=5, fill='x')
+        
+        # DOCX кнопка (всегда активна)
+        docx_btn = tk.Button(btn_frame, text="📄 DOCX (для Word)", 
+                            command=lambda: select_format('docx'),
+                            bg='#2196F3', fg='white',
+                            activebackground='#1976D2',
+                            font=('Arial', 10, 'bold'),
+                            relief='raised', bd=2,
+                            height=1, cursor='hand2')
+        docx_btn.pack(pady=5, fill='x')
+        
+        # Кнопка отмены
+        cancel_btn = tk.Button(btn_frame, text="❌ Отмена", 
+                              command=dialog.destroy,
+                              bg='#f44336', fg='white',
+                              activebackground='#d32f2f',
+                              font=('Arial', 10),
+                              relief='raised', bd=2,
+                              height=1, cursor='hand2')
+        cancel_btn.pack(pady=10, fill='x')
+
+    def _generate_report(self, license_key, format_type='html'):
+        """Генерация и сохранение отчета в выбранном формате"""
         try:
             # Получаем данные за выбранный период
             stats = self.get_stats_for_period()
@@ -2966,50 +3075,48 @@ class InternetSpeedMonitor:
                 messagebox.showinfo("Отчет", "Нет данных за выбранный период")
                 return
             
-            # Определяем название периода
-            period = self.stats_period_var.get()
-            if period == "День":
-                if hasattr(self, 'stats_date_picker'):
-                    selected = self.stats_date_picker.get_date()
-                    period_name = selected.strftime('%d.%m.%Y')
-                else:
-                    period_name = "выбранный день"
-            elif period == "Неделя":
-                week = self.stats_week_combo.get()
-                year = self.stats_week_year_combo.get()
-                period_name = f"неделя {week}, {year}"
-            elif period == "Месяц":
-                month = self.stats_month_combo.get()
-                year = self.stats_month_year_combo.get()
-                period_name = f"{month} {year}"
-            elif period == "Квартал":
-                quarter = self.stats_quarter_combo.get()
-                year = self.stats_quarter_year_combo.get()
-                period_name = f"{quarter} квартал {year}"
-            else:  # Год
-                year = self.stats_year_combo.get()
-                period_name = f"{year} год"
+            # Получаем название периода
+            period_name = self._get_period_name()
             
             # Получаем даты периода
             start_date, end_date = self._get_period_dates()
-            if start_date:
-                start_str = start_date.split(' ')[0] if ' ' in start_date else start_date
-                end_str = end_date.split(' ')[0] if ' ' in end_date else end_date
-            else:
-                start_str = "начало"
-                end_str = "конец"
+            start_str = start_date.split(' ')[0] if start_date else "начало"
+            end_str = end_date.split(' ')[0] if end_date else "конец"
             
-            # Генерируем отчет
+            # Генерируем отчет в зависимости от формата
             from report_generator import ReportGenerator
             generator = ReportGenerator(self.get_db(), self)
-            report_text = generator.generate_report(period_name, start_str, end_str, stats)
             
-            # Сохраняем в файл
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".txt",
-                filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-                initialfile=f"speedwatch_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            )
+            filename = None
+            if format_type == 'html':
+                report_content = generator.generate_html_report(period_name, start_str, end_str, stats)
+                filename = filedialog.asksaveasfilename(
+                    defaultextension=".html",
+                    filetypes=[("HTML files", "*.html"), ("All files", "*.*")],
+                    initialfile=f"speedwatch_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                )
+                if filename:
+                    success = generator.save_html_report(filename, report_content)
+            else:  # docx
+                try:
+                    report_doc = generator.generate_docx_report(period_name, start_str, end_str, stats)
+                    
+                    filename = filedialog.asksaveasfilename(
+                        defaultextension=".docx",
+                        filetypes=[("Word files", "*.docx"), ("All files", "*.*")],
+                        initialfile=f"speedwatch_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                    )
+                    if filename:
+                        success = generator.save_docx_report(filename, report_doc)
+                    else:
+                        return
+                except ImportError:
+                    messagebox.showerror("Ошибка", "Библиотека python-docx не установлена.\nВыполните: pip install python-docx")
+                    return
+                except Exception as e:
+                    self.logger.error(f"Ошибка создания DOCX: {e}")
+                    messagebox.showerror("Ошибка", f"Не удалось создать DOCX: {e}")
+                    return
             
             if not filename:
                 return
@@ -3020,10 +3127,15 @@ class InternetSpeedMonitor:
                 self._save_premium_status()
                 self._refresh_settings_tab()
             
-            if generator.save_report(filename, report_text):
+            if success:
                 self.status_var.set(f"Отчет сохранен: {filename}")
                 self.logger.info(f"Отчет сохранен в {filename}")
                 messagebox.showinfo("Успех", f"Отчет сохранен в файл:\n{filename}")
+                
+                # Предлагаем открыть файл
+                if messagebox.askyesno("Открыть файл", "Открыть сохраненный отчет?"):
+                    import os
+                    os.startfile(filename)
                 
                 if license_key:
                     messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
@@ -3033,6 +3145,30 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка генерации отчета: {e}")
             messagebox.showerror("Ошибка", f"Не удалось сгенерировать отчет: {e}")
+
+    def _get_period_name(self):
+        """Получение названия текущего периода"""
+        period = self.stats_period_var.get()
+        if period == "День":
+            if hasattr(self, 'stats_date_picker'):
+                selected = self.stats_date_picker.get_date()
+                return selected.strftime('%d.%m.%Y')
+            return "выбранный день"
+        elif period == "Неделя":
+            week = self.stats_week_combo.get()
+            year = self.stats_week_year_combo.get()
+            return f"неделя {week}, {year}"
+        elif period == "Месяц":
+            month = self.stats_month_combo.get()
+            year = self.stats_month_year_combo.get()
+            return f"{month} {year}"
+        elif period == "Квартал":
+            quarter = self.stats_quarter_combo.get()
+            year = self.stats_quarter_year_combo.get()
+            return f"{quarter} квартал {year}"
+        else:  # Год
+            year = self.stats_year_combo.get()
+            return f"{year} год"
 
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
