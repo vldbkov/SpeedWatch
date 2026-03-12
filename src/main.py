@@ -29,6 +29,8 @@ import license
 from license import show_premium_dialog, LicenseManager
 import webbrowser
 
+__version__ = "1.1.0"
+
 # Настройка кодировки для EXE
 if hasattr(sys, 'frozen'):
     try:
@@ -48,8 +50,6 @@ def safe_print(text, end='\n', flush=False):
             pass
     except:
         pass
-
-__version__ = "1.1.0"
 
 def parse_arguments():
     """Парсинг аргументов командной строки"""
@@ -2439,8 +2439,24 @@ class InternetSpeedMonitor:
         export_frame = ttk.Frame(self.stats_frame)
         export_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
         
-        ttk.Button(export_frame, text="🧾 Экспорт отчета", command=self.export_stats_report).pack(side='left', padx=5)
-        ttk.Button(export_frame, text="📋 Копировать в буфер", command=self.copy_stats_to_clipboard).pack(side='left', padx=5)
+        # Кнопка экспорта отчета (премиум)
+        if self.premium_export.get():
+            export_btn = ttk.Button(export_frame, text="📄 Печать отчета", command=self.export_detailed_report)
+        else:
+            export_btn = tk.Button(export_frame, text="📄 Печать отчета\n  (Premium)", 
+                                  command=self.export_detailed_report,
+                                  fg="#D4AF37",
+                                  bg="#2C2C2C",
+                                  activeforeground="#FFD700",
+                                  activebackground="#3C3C3C",
+                                  relief="solid",
+                                  bd=2,
+                                  highlightbackground="#D4AF37",
+                                  highlightcolor="#D4AF37",
+                                  highlightthickness=1,
+                                  font=('Arial', 10, 'bold'),
+                                  cursor="hand2")
+        export_btn.pack(side='left', padx=5)
         
         # === ЗАПОЛНЕНИЕ БЛОКОВ ДАННЫМИ (ВРЕМЕННО) ===
         self.update_stats_display()
@@ -2922,16 +2938,101 @@ class InternetSpeedMonitor:
         """Обновление статистики на основе выбранного периода"""
         self.logger.info("Обновление статистики...")
         self.update_stats_display()
-
-    def export_stats_report(self):
-        """Экспорт статистики в текстовый файл"""
-        # TODO: Реализовать экспорт
-        messagebox.showinfo("Экспорт", "Функция будет доступна в следующей версии")
-        
+      
     def copy_stats_to_clipboard(self):
-        """Копирование статистики в буфер обмена"""
-        # TODO: Реализовать копирование
+        """Копирование статистики в буфер обмена (будет реализовано позже)"""
         messagebox.showinfo("Копирование", "Функция будет доступна в следующей версии")
+
+    def export_detailed_report(self):
+        """Экспорт детального отчета для провайдера"""
+        try:
+            # Проверяем премиум-доступ
+            if not self.premium_export.get():
+                show_premium_dialog(self.root, lambda key: self._generate_report(key))
+                return
+            
+            self._generate_report(None)
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка экспорта отчета: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось экспортировать отчет: {e}")
+    
+    def _generate_report(self, license_key):
+        """Генерация и сохранение отчета"""
+        try:
+            # Получаем данные за выбранный период
+            stats = self.get_stats_for_period()
+            if not stats:
+                messagebox.showinfo("Отчет", "Нет данных за выбранный период")
+                return
+            
+            # Определяем название периода
+            period = self.stats_period_var.get()
+            if period == "День":
+                if hasattr(self, 'stats_date_picker'):
+                    selected = self.stats_date_picker.get_date()
+                    period_name = selected.strftime('%d.%m.%Y')
+                else:
+                    period_name = "выбранный день"
+            elif period == "Неделя":
+                week = self.stats_week_combo.get()
+                year = self.stats_week_year_combo.get()
+                period_name = f"неделя {week}, {year}"
+            elif period == "Месяц":
+                month = self.stats_month_combo.get()
+                year = self.stats_month_year_combo.get()
+                period_name = f"{month} {year}"
+            elif period == "Квартал":
+                quarter = self.stats_quarter_combo.get()
+                year = self.stats_quarter_year_combo.get()
+                period_name = f"{quarter} квартал {year}"
+            else:  # Год
+                year = self.stats_year_combo.get()
+                period_name = f"{year} год"
+            
+            # Получаем даты периода
+            start_date, end_date = self._get_period_dates()
+            if start_date:
+                start_str = start_date.split(' ')[0] if ' ' in start_date else start_date
+                end_str = end_date.split(' ')[0] if ' ' in end_date else end_date
+            else:
+                start_str = "начало"
+                end_str = "конец"
+            
+            # Генерируем отчет
+            from report_generator import ReportGenerator
+            generator = ReportGenerator(self.get_db(), self)
+            report_text = generator.generate_report(period_name, start_str, end_str, stats)
+            
+            # Сохраняем в файл
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+                initialfile=f"speedwatch_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            )
+            
+            if not filename:
+                return
+            
+            # Если пришел ключ - активируем премиум
+            if license_key:
+                self.premium_export.set(True)
+                self._save_premium_status()
+                self._refresh_settings_tab()
+            
+            if generator.save_report(filename, report_text):
+                self.status_var.set(f"Отчет сохранен: {filename}")
+                self.logger.info(f"Отчет сохранен в {filename}")
+                messagebox.showinfo("Успех", f"Отчет сохранен в файл:\n{filename}")
+                
+                if license_key:
+                    messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+            else:
+                messagebox.showerror("Ошибка", "Не удалось сохранить отчет")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка генерации отчета: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось сгенерировать отчет: {e}")
 
     def setup_settings_tab(self):
         """Настройка вкладки настроек"""
