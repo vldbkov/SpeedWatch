@@ -2083,9 +2083,9 @@ class InternetSpeedMonitor:
         self.graph_selector_frame = ttk.Frame(control_frame)
         self.graph_selector_frame.grid(row=0, column=2, sticky='w', padx=5)
         
-        # Кнопка обновления
-        update_btn = ttk.Button(control_frame, text="Обновить", command=self.update_graph, width=8)
-        update_btn.grid(row=0, column=3, sticky='w', padx=5)
+        # Кнопка обновления графиков
+        update_graph_btn = ttk.Button(control_frame, text="Обновить", command=self.update_graph, width=8)
+        update_graph_btn.grid(row=0, column=3, sticky='w', padx=5)
         
         # Пустой расширяемый столбец
         ttk.Frame(control_frame).grid(row=0, column=4, sticky='ew')
@@ -2183,7 +2183,9 @@ class InternetSpeedMonitor:
         button_frame = ttk.Frame(log_control_frame)
         button_frame.pack(side='left')
         
-        ttk.Button(button_frame, text="Обновить", command=self.update_log).pack(side='left', padx=5)
+        # Кнопка обновления журнала (в стиле кнопки "Очистить журнал")
+        update_log_btn = ttk.Button(button_frame, text="Обновить", command=self.update_log, width=8)
+        update_log_btn.pack(side='left', padx=5)
         
         # Кнопка экспорта CSV (премиум)
         if self.premium_export.get():
@@ -2204,7 +2206,7 @@ class InternetSpeedMonitor:
                                        cursor="hand2")
         export_csv_btn.pack(side='left', padx=5)
         
-        # Кнопка очистки журнала
+        # Кнопка очистки журнала 
         clear_btn = ttk.Button(button_frame, text="Очистить\n журнал", command=self.clear_log, width=8)
         clear_btn.pack(side='left', padx=5)
         
