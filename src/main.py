@@ -151,8 +151,7 @@ def get_dpi_scale_factor():
 class InternetSpeedMonitor:
     def __init__(self, root):
         self.root = root
-        self.root.update()  # Сразу обновляем интерфейс
-       
+        
         # Определяем корневую директорию проекта
         if getattr(sys, 'frozen', False):
             self.base_dir = os.path.dirname(sys.executable)
@@ -184,11 +183,15 @@ class InternetSpeedMonitor:
         # Настройка окна
         self.root.title("SpeedWatch - Мониторинг скорости интернета")
         self.root.geometry(f"{scaled_width}x{scaled_height}")
-       
+        
+        # Скрываем окно до полной готовности
+        self.root.withdraw()
+
         # Убираем окно из панели задач при сворачивании в трей
         self.root.attributes('-toolwindow', 0)  # Обычное окно
         
-        self.center_window()
+        # Центрирование пока отключаем - сделаем позже
+        # self.center_window()
         
         # Установка иконки
         try:
@@ -279,14 +282,6 @@ class InternetSpeedMonitor:
         self.graph_month_var = tk.StringVar()
         self.graph_year_var = tk.StringVar(value=str(datetime.now().year))
 
-        # === ВАЛИДНОСТЬ ЗАПИСЕЙ ===
-        self.valid_combinations = [
-            ['download_speed', 'upload_speed', 'ping'],  # минимум 3 показателя
-            ['download_speed', 'upload_speed', 'ping', 'jitter']  # все 4
-        ]
-        self.invalid_records_count = 0
-        self.invalid_records_ids = []
-
         # === ОЧИСТКА ИСТОРИИ ===
         self.clean_enabled_var = tk.BooleanVar(value=True)
         self.auto_clean_days_var = tk.IntVar(value=90)
@@ -301,7 +296,7 @@ class InternetSpeedMonitor:
 
         # Создание интерфейса (после загрузки настроек)
         self.create_widgets()        
-       
+        
         # Устанавливаем начальные даты в фильтре журнала
         first_date = self.get_first_measurement_date()
         self.date_from_entry.set_date(first_date)
@@ -314,22 +309,13 @@ class InternetSpeedMonitor:
         last_time = self.get_last_measurement_time()
         self.last_check_var.set(last_time)
 
-        # ПОКАЗЫВАЕМ ОКНО "О ПРОГРАММЕ" ПРИ ПЕРВОМ ЗАПУСКЕ
-        if self.is_first_load:
-            self.root.after(500, self.show_about_window)
-
         # Загружаем последние значения измерений
         self.load_last_measurement()
 
-        # Очистка старых записей при запуске
-        # self.clean_old_records()  # Временно отключаем
+        # Очистка старых записей при запуске (пока отключено)
+        # self.clean_old_records()
 
-        # После загрузки настроек
         self.update_log()
-        
-        # Для EXE режима - принудительно показываем окно при первом запуске
-        if getattr(sys, 'frozen', False) and not self.minimize_to_tray_var.get():
-            self.root.after(500, self.show_window)      
         
         # Создание меню для трея
         self.create_tray_icon()
@@ -342,34 +328,20 @@ class InternetSpeedMonitor:
         # При закрытии окна - сворачиваем в трей
         self.root.protocol("WM_DELETE_WINDOW", self.handle_window_close)        
         
-        # При первом запуске всегда показываем окно
-        if self.is_first_load:
-            self.show_window()
-        # При последующих запусках - как настроено
-        elif self.minimize_to_tray_var.get():
-            self.minimize_to_tray()
-
         # Обновляем меню трея
         try:
             self.update_tray_menu()
         except Exception:
             pass
 
-        # При первом запуске всегда запускаем мониторинг
-        if self.is_first_load:
-            self.logger.info("Первый запуск: запускаем мониторинг через 2 секунды...")
-            self.root.after(2000, self.start_monitoring)
-        # При последующих запусках - как настроено
-        elif self.auto_start_var.get():
+        # При автозапуске даем сети время инициализироваться
+        if self.auto_start_var.get():
             self.logger.info("Автозапуск: ждем 15 секунд для инициализации сети...")
             self.root.after(15000, self.start_monitoring)
         else:
             self.root.after(2000, self.analyze_connection_quality)
             self.root.after(3000, self._check_updates_auto)
-
-        # Анализ валидности записей (с задержкой после загрузки)
-        self.root.after(5000, self.analyze_records_validity)
-
+        
         self.started_in_tray = True        
         
         # Скрываем консоль после создания трея
@@ -378,8 +350,13 @@ class InternetSpeedMonitor:
         # Запускаем главный цикл Tkinter
         self.root.after(100, self.check_tray_icon)
         
-        # ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ИНТЕРФЕЙС
-        self.root.update()
+        # ПОКАЗЫВАЕМ ОКНО ТОЛЬКО КОГДА ВСЁ ГОТОВО
+        self.root.deiconify()
+        self.center_window()
+        
+        # Показываем окно "О программе" с небольшой задержкой
+        if self.is_first_load:
+            self.root.after(2000, self.show_about_window)
         
         # Сбрасываем флаг ПОСЛЕ всех проверок первого запуска
         self.is_first_load = False
