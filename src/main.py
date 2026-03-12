@@ -2183,7 +2183,7 @@ class InternetSpeedMonitor:
         button_frame = ttk.Frame(log_control_frame)
         button_frame.pack(side='left')
         
-        # Кнопка обновления журнала (в стиле кнопки "Очистить журнал")
+        # Кнопка обновления журнала
         update_log_btn = ttk.Button(button_frame, text="Обновить", command=self.update_log, width=8)
         update_log_btn.pack(side='left', padx=5)
         
@@ -2251,16 +2251,12 @@ class InternetSpeedMonitor:
         button_filter_frame = ttk.Frame(log_control_frame)
         button_filter_frame.pack(side='left', padx=(10, 0))
         
-        # Кнопка "Применить"
-        apply_btn = tk.Button(button_filter_frame, text="Применить", command=self.update_log,
-                             font=('Arial', 9), width=10, height=1,
-                             bg='#f0f0f0', relief='raised')
+        # Кнопка "Применить" (ttk стиль)
+        apply_btn = ttk.Button(button_filter_frame, text="Применить", command=self.update_log, width=10)
         apply_btn.pack(side='top', pady=2)
         
-        # Кнопка "Сбросить"
-        reset_btn = tk.Button(button_filter_frame, text="Сбросить", command=self.reset_date_filter,
-                             font=('Arial', 9), width=10, height=1,
-                             bg='#f0f0f0', relief='raised')
+        # Кнопка "Сбросить" (ttk стиль)
+        reset_btn = ttk.Button(button_filter_frame, text="Сбросить", command=self.reset_date_filter, width=10)
         reset_btn.pack(side='top', pady=2)
                 
         # Панель со средними значениями
