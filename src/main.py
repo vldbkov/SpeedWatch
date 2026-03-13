@@ -2496,8 +2496,7 @@ class InternetSpeedMonitor:
         """Настройка вкладки статистики"""
         # Панель выбора периода
         period_frame = ttk.Frame(self.stats_frame)
-        period_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
-        
+        period_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))        
         ttk.Label(period_frame, text="Период:", font=self.scale_font('Arial', 10)).pack(side='left')
         
         # Переменные для периода
@@ -2508,20 +2507,14 @@ class InternetSpeedMonitor:
         self.stats_quarter_var = tk.StringVar()
         self.stats_year_var = tk.StringVar(value=str(datetime.now().year))
         
-        # Радиокнопки выбора периода
-        periods_frame = ttk.Frame(period_frame)
-        periods_frame.pack(side='left', padx=10)
-        
-        ttk.Radiobutton(periods_frame, text="День", variable=self.stats_period_var, 
-                       value="День", command=self.update_stats_period_ui).pack(side='left', padx=2)
-        ttk.Radiobutton(periods_frame, text="Неделя", variable=self.stats_period_var, 
-                       value="Неделя", command=self.update_stats_period_ui).pack(side='left', padx=2)
-        ttk.Radiobutton(periods_frame, text="Месяц", variable=self.stats_period_var, 
-                       value="Месяц", command=self.update_stats_period_ui).pack(side='left', padx=2)
-        ttk.Radiobutton(periods_frame, text="Квартал", variable=self.stats_period_var, 
-                       value="Квартал", command=self.update_stats_period_ui).pack(side='left', padx=2)
-        ttk.Radiobutton(periods_frame, text="Год", variable=self.stats_period_var, 
-                       value="Год", command=self.update_stats_period_ui).pack(side='left', padx=2)
+        # Выпадающий список вместо радиокнопок
+        periods = ["День", "Неделя", "Месяц", "Квартал", "Год"]
+        self.stats_period_combo = ttk.Combobox(period_frame, values=periods, 
+                                               textvariable=self.stats_period_var,
+                                               width=10, state='readonly',
+                                               font=self.scale_font('Arial', 10))
+        self.stats_period_combo.pack(side='left', padx=5)
+        self.stats_period_combo.bind('<<ComboboxSelected>>', self.on_stats_period_changed)
         
         # Контейнер для элементов выбора (будет обновляться динамически)
         self.stats_selector_frame = ttk.Frame(period_frame)
@@ -2548,29 +2541,38 @@ class InternetSpeedMonitor:
         self.stability_frame = ttk.LabelFrame(top_row, text="Стабильность", padding=8)
         self.stability_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
         
-        # Нижний ряд
-        bottom_row = ttk.Frame(stats_container)
-        bottom_row.pack(fill='both', expand=True, pady=2)
-        bottom_row.columnconfigure(0, weight=1)
-        bottom_row.columnconfigure(1, weight=1)
+        # Нижний ряд - два независимых контейнера
+        bottom_frame = ttk.Frame(stats_container)
+        bottom_frame.pack(fill='both', expand=True, pady=2)
+        
+        # Левый контейнер для проблемных периодов
+        left_frame = ttk.Frame(bottom_frame)
+        left_frame.pack(side='left', fill='both', expand=True, padx=1)
         
         # Блок 3: Проблемные периоды
-        self.problems_frame = ttk.LabelFrame(bottom_row, text="Проблемные периоды", padding=8)
-        self.problems_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        self.problems_frame = ttk.LabelFrame(left_frame, text="Проблемные периоды", padding=8)
+        self.problems_frame.pack(fill='both', expand=True)
+        
+        # Правый контейнер для общей статистики
+        right_frame = ttk.Frame(bottom_frame)
+        right_frame.pack(side='left', fill='both', expand=True, padx=1)
         
         # Блок 4: Общая статистика
-        self.total_stats_frame = ttk.LabelFrame(bottom_row, text="Общая статистика", padding=8)
-        self.total_stats_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        self.total_stats_frame = ttk.LabelFrame(right_frame, text="Общая статистика", padding=8)
+        self.total_stats_frame.pack(fill='x', expand=False)  # ← ТОЛЬКО по ширине, не по высоте
         
         # Кнопки экспорта внизу
         export_frame = ttk.Frame(self.stats_frame)
         export_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
-        
-        # Кнопка экспорта отчета (премиум)
+
+        # Пустой фрейм слева для растяжки
+        ttk.Frame(export_frame).pack(side='left', fill='x', expand=True)
+
+        # Кнопка экспорта отчета (премиум) - прижата к правому краю
         if self.premium_export.get():
             export_btn = ttk.Button(export_frame, text="📄 Печать отчета", command=self.export_detailed_report)
         else:
-            export_btn = tk.Button(export_frame, text="📄 Печать отчета\n  (Premium)", 
+            export_btn = tk.Button(export_frame, text="📄 Печать отчета\n(Premium)", 
                                   command=self.export_detailed_report,
                                   fg="#D4AF37",
                                   bg="#2C2C2C",
@@ -2583,7 +2585,7 @@ class InternetSpeedMonitor:
                                   highlightthickness=1,
                                   font=('Arial', 10, 'bold'),
                                   cursor="hand2")
-        export_btn.pack(side='left', padx=5)
+        export_btn.pack(side='right', padx=5)
         
         # === ЗАПОЛНЕНИЕ БЛОКОВ ДАННЫМИ (ВРЕМЕННО) ===
         self.update_stats_display()
@@ -2677,6 +2679,10 @@ class InternetSpeedMonitor:
             self.stats_year_combo.pack(side='left', padx=5)
             self.stats_year_combo.set(str(datetime.now().year))
 
+    def on_stats_period_changed(self, event):
+        """Обработка изменения периода в статистике"""
+        self.update_stats_period_ui()
+
     def update_stats_display(self):
         """Обновление отображения статистики в блоках"""
         try:
@@ -2707,7 +2713,11 @@ class InternetSpeedMonitor:
             else:
                 # Заглушка "нет данных"
                 self._fill_placeholder_blocks()
-                
+            
+            # Разрешаем каждому блоку иметь свою высоту
+            self.problems_frame.pack_propagate(True)
+            self.total_stats_frame.pack_propagate(True)
+            
         except Exception as e:
             self.logger.error(f"Ошибка обновления статистики: {e}")
             self._fill_placeholder_blocks()
@@ -2749,12 +2759,14 @@ class InternetSpeedMonitor:
         planned = self.planned_speed_var.get() if hasattr(self, 'planned_speed_var') else 100
         
         # Загрузка
-        download_text = f"📥 Загрузка: {stats['avg_download']:.1f} Mbps  (тариф {planned} Mbps)" if stats['avg_download'] is not None else "📥 Загрузка: —"
-        
-        if stats['avg_download'] is not None and planned > 0:
-            download_diff = planned - stats['avg_download']
-            if download_diff > 0:
-                download_text += f"  🔻 ниже на {download_diff/planned*100:.1f}%"
+        if stats['avg_download'] is not None:
+            download_text = f"📥 Загрузка: {stats['avg_download']:.1f} Mbps"
+            if planned > 0:
+                download_diff = planned - stats['avg_download']
+                if download_diff > 0:
+                    download_text += f"  🔻 ниже на {download_diff/planned*100:.1f}%"
+        else:
+            download_text = "📥 Загрузка: —"
         
         ttk.Label(self.tariff_frame, text=download_text, font=('Arial', 9)).pack(anchor='w', pady=1)
         
