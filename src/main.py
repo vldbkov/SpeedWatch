@@ -2386,8 +2386,8 @@ class InternetSpeedMonitor:
         reset_btn.pack(side='top', pady=2)
                 
         # Панель со средними значениями
-        avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=self.scale_value(15))
-        avg_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
+        avg_frame = ttk.LabelFrame(self.log_frame, text="Средние значения", padding=self.scale_value(5))  # Уменьшили padding
+        avg_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(3))  # Уменьшили pady
         
         # Контейнер для значений (три колонки)
         values_frame = ttk.Frame(avg_frame)
@@ -2430,7 +2430,7 @@ class InternetSpeedMonitor:
         
         # Создаем Treeview с полосой прокрутки
         tree_frame = ttk.Frame(self.log_frame)
-        tree_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
+        tree_frame.pack(fill='both', expand=True, padx=self.scale_value(15), pady=(0, self.scale_value(15)))
         
         # Вертикальная полоса прокрутки
         vsb = ttk.Scrollbar(tree_frame, orient="vertical")
