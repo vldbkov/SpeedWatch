@@ -301,6 +301,9 @@ class InternetSpeedMonitor:
         self.is_first_load = True
         self.load_settings()
 
+        # Добавляем премиум-статус в заголовок (ПОСЛЕ загрузки настроек)
+        self.update_window_title_with_premium()
+
         # Создание интерфейса (после загрузки настроек)
         self.create_widgets()        
         
@@ -1272,6 +1275,18 @@ class InternetSpeedMonitor:
                     self.planned_speed_indicator.config(text=f"{planned} Mbps", foreground='black')
             else:
                 self.planned_speed_indicator.config(text="")
+
+    def update_window_title_with_premium(self):
+        """Обновить заголовок окна с премиум-статусом"""
+        copyright_symbol = "\u00A9"
+        base_title = f"SpeedWatch {copyright_symbol} v.{__version__} 2026 – Мониторинг скорости интернета"
+        
+        if self.premium_export.get():
+            # Премиум статус - золотой
+            self.root.title(f"👑 {base_title} [ПРЕМИУМ] 👑")
+        else:
+            # Стандарт статус - синий (но в заголовке нельзя задать цвет, только текст)
+            self.root.title(f"⚡ {base_title} [СТАНДАРТ]")
 
 # region ### Можно осторожно менять
     def analyze_connection_quality(self):
@@ -3232,6 +3247,7 @@ class InternetSpeedMonitor:
                 self.premium_export.set(True)
                 self._save_premium_status()
                 self._refresh_settings_tab()
+                self.update_window_title_with_premium()
             
             if success:
                 self.status_var.set(f"Отчет сохранен: {filename}")
@@ -3581,14 +3597,18 @@ class InternetSpeedMonitor:
                 self.auto_clean_days_var.set(int(result[0]))
 
             # === ПРЕМИУМ-СТАТУС ===
-            db.execute("SELECT value FROM settings WHERE key='premium_export'")
-            result = db.cursor.fetchone()
+            cursor.execute("SELECT value FROM settings WHERE key='premium_export'")
+            result = cursor.fetchone()
             if result:
                 self.premium_export.set(result[0] == '1')
             else:
                 self.premium_export.set(False)
             
-            db.close()
+            cursor.close()
+            conn.close()
+            
+            # Обновляем заголовок окна с премиум-статусом
+            self.update_window_title_with_premium()
             
             # После загрузки всех настроек обновляем вкладку настроек
             if hasattr(self, 'settings_frame'):
@@ -4901,6 +4921,10 @@ class InternetSpeedMonitor:
             db.commit()
             db.close()
             self.logger.info("Статус премиум-доступа сохранен")
+            
+            # Обновляем заголовок окна с премиум-статусом
+            self.update_window_title_with_premium()
+            
         except Exception as e:
             self.logger.error(f"Ошибка сохранения статуса премиум: {e}")
 
