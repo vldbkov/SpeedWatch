@@ -350,7 +350,10 @@ class InternetSpeedMonitor:
         else:
             self.root.after(2000, self.analyze_connection_quality)
             self.root.after(3000, self._check_updates_auto)
-        
+
+        # Запускаем периодическую проверку статуса мониторинга (первый раз через 30 минут)
+        self.root.after(1800000, self.periodic_monitoring_check)  # закомментировать
+
         self.started_in_tray = True        
         
         # Скрываем консоль после создания трея
@@ -727,6 +730,32 @@ class InternetSpeedMonitor:
             self.logger.warning("Иконка трея не запущена, перезапускаем...")
             self.create_tray_icon()
 
+    def periodic_monitoring_check(self):
+        """Периодическая проверка статуса мониторинга (каждые 30 минут)"""
+        try:
+            # Если мониторинг не запущен и не в процессе теста
+            if not self.running and not self.test_in_progress:
+                # Показываем диалог
+                result = messagebox.askyesno(
+                    "Напоминание",
+                    "⏰ SpeedWatch готов к работе!\n\n"
+                    "Мониторинг скорости не запущен.\n"
+                    "Хотите включить автоматическую проверку?\n\n"
+                    "(Можно включить позже вручную)",
+                    icon='question'
+                )
+                
+                if result:
+                    self.start_monitoring()
+                    self.logger.info("Мониторинг запущен по напоминанию")
+            
+            # Запускаем следующую проверку через 30 минут
+            self.root.after(1800000, self.periodic_monitoring_check)  # 30 минут в миллисекундах
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка в напоминании: {e}")
+            # Даже при ошибке продолжаем проверки
+            self.root.after(1800000, self.periodic_monitoring_check)
 
     def setup_logging(self):
         """Настройка логирования - только в файл"""
