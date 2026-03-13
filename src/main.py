@@ -1930,36 +1930,36 @@ class InternetSpeedMonitor:
         self.monitor_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.monitor_frame, text='Мониторинг')
         
-        # Вкладка графиков
-        self.graph_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.graph_frame, text='Графики')
+        # Вкладка настроек
+        self.settings_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_frame, text='Настройки')
+        
+        # Вкладка статистики
+        self.stats_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.stats_frame, text='Статистика')
         
         # Вкладка журнала
         self.log_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.log_frame, text='Журнал')
+        
+        # Вкладка графиков
+        self.graph_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.graph_frame, text='Графики')
 
-        # Вкладка настроек
-        self.settings_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.settings_frame, text='Настройки')
-
-         # === НОВАЯ ВКЛАДКА СТАТИСТИКИ ===
-        self.stats_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.stats_frame, text='Статистика')      
-      
         # Заполняем вкладку мониторинга
         self.setup_monitor_tab()
         
-        # Заполняем вкладку графиков
-        self.setup_graph_tab()
+        # Заполняем вкладку настроек
+        self.setup_settings_tab()
+        
+        # Заполняем вкладку статистики
+        self.setup_stats_tab()
         
         # Заполняем вкладку журнала
         self.setup_log_tab()
         
-        # Заполняем вкладку настроек
-        self.setup_settings_tab()
-
-        # === ВАЖНО: Заполняем вкладку статистики ===
-        self.setup_stats_tab()
+        # Заполняем вкладку графиков
+        self.setup_graph_tab()
 
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
