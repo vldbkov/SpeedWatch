@@ -1028,6 +1028,9 @@ class InternetSpeedMonitor:
             provider_response = requests.get(f'http://ip-api.com/json/{my_ip}?fields=status,isp,org,as,mobile,proxy,hosting', timeout=5)
             provider_data = provider_response.json()
             
+            # Определяем тип подключения
+            conn_type = "Неизвестно"
+            
             if provider_data.get('status') == 'success':
                 isp = provider_data.get('isp', 'Неизвестно')
                 org = provider_data.get('org', '')
@@ -1038,7 +1041,7 @@ class InternetSpeedMonitor:
                 if org and org != isp:
                     provider = f"{isp} ({org})"
                 
-                # Определяем тип подключения
+                # Определяем тип подключения по данным провайдера
                 if provider_data.get('mobile'):
                     conn_type = "Мобильный"
                 elif provider_data.get('proxy'):
@@ -1046,7 +1049,13 @@ class InternetSpeedMonitor:
                 elif provider_data.get('hosting'):
                     conn_type = "Хостинг/Дата-центр"
                 else:
-                    conn_type = "Проводной"
+                    # Определяем тип на основе активного интерфейса
+                    local_type, protocol, iface = self.detect_connection_type()
+                    conn_type = local_type
+                    
+                    # Если это Wi-Fi и есть протокол, добавляем его
+                    if local_type == "Wi-Fi" and protocol != "—":
+                        conn_type += f" ({protocol})"
                 
                 return {
                     'ip': my_ip,
@@ -1055,11 +1064,121 @@ class InternetSpeedMonitor:
                     'connection_type': conn_type
                 }
             else:
-                return {'ip': my_ip, 'provider': 'Неизвестно', 'connection_type': 'Неизвестно'}
+                # Если не удалось получить данные, определяем хотя бы тип
+                local_type, protocol, iface = self.detect_connection_type()
+                if local_type == "Wi-Fi" and protocol != "—":
+                    local_type += f" ({protocol})"
+                
+                return {'ip': my_ip, 'provider': 'Неизвестно', 'connection_type': local_type}
                 
         except Exception as e:
             self.logger.error(f"Ошибка получения IP информации: {e}")
-            return {'ip': 'Неизвестно', 'provider': 'Неизвестно', 'connection_type': 'Неизвестно'}
+            
+            # Пытаемся определить хотя бы тип подключения
+            try:
+                local_type, protocol, iface = self.detect_connection_type()
+                if local_type == "Wi-Fi" and protocol != "—":
+                    local_type += f" ({protocol})"
+            except:
+                local_type = "Неизвестно"
+            
+            return {'ip': 'Неизвестно', 'provider': 'Неизвестно', 'connection_type': local_type}
+
+    def get_active_interface(self):
+        """Определить активный сетевой интерфейс (через который идет интернет)"""
+        try:
+            import psutil
+            import socket
+            
+            # Создаем UDP-сокет для определения исходящего интерфейса
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip, _ = s.getsockname()
+            s.close()
+            
+            # Ищем интерфейс с этим IP
+            interfaces = psutil.net_if_addrs()
+            for iface_name, addrs in interfaces.items():
+                for addr in addrs:
+                    if addr.family == socket.AF_INET and addr.address == local_ip:
+                        return iface_name, local_ip
+            
+            return None, None
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка определения активного интерфейса: {e}")
+            return None, None
+
+    def detect_connection_type(self):
+        """Определить тип подключения и детали (Wi-Fi протокол, скорость)"""
+        try:
+            import psutil
+            import subprocess
+            import re
+            
+            # Определяем активный интерфейс
+            active_iface, local_ip = self.get_active_interface()
+            if not active_iface:
+                return "Неизвестно", "—", "—"
+            
+            # Получаем статистику интерфейса
+            stats = psutil.net_if_stats().get(active_iface)
+            is_up = stats.isup if stats else False
+            
+            if not is_up:
+                return "Неизвестно (отключен)", "—", "—"
+            
+            # Определяем тип по имени интерфейса
+            iface_lower = active_iface.lower()
+            
+            # Wi-Fi интерфейсы (с русскими названиями)
+            wifi_patterns = ['wi-fi', 'wifi', 'wireless', 'wlan', '802.11', 
+                            'беспроводная', 'wi fi', 'wi-fi']
+            ethernet_patterns = ['eth', 'enp', 'eno', 'ens', 'ethernet', 'lan', 
+                                'проводная', 'ethernet']
+            
+            connection_type = "Неизвестно"
+            protocol = "—"
+            
+            for pattern in wifi_patterns:
+                if pattern in iface_lower:
+                    connection_type = "Wi-Fi"
+                    # Пытаемся получить протокол через netsh (Windows)
+                    if sys.platform == 'win32':
+                        try:
+                            result = subprocess.run(
+                                ['netsh', 'wlan', 'show', 'interfaces'],
+                                capture_output=True, text=True, encoding='cp1251', errors='ignore'
+                            )
+                            output = result.stdout
+                            
+                            # Ищем строку с типом радио
+                            lines = output.split('\n')
+                            for line in lines:
+                                line = line.strip()
+                                # Проверяем наличие ключевых слов
+                                if ('радио' in line.lower() or 'radio' in line.lower() or 
+                                    'ЁЇ а ¤Ё®' in line or 'ип радио' in line):
+                                    parts = line.split(':')
+                                    if len(parts) > 1:
+                                        protocol = parts[1].strip()
+                                        break
+                        except Exception:
+                            pass
+                    break
+            
+            if connection_type == "Неизвестно":
+                for pattern in ethernet_patterns:
+                    if pattern in iface_lower:
+                        connection_type = "Проводное"
+                        protocol = "Ethernet"
+                        break
+            
+            return connection_type, protocol, active_iface
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка определения типа подключения: {e}")
+            return "Неизвестно", "—", "—"
 
     def get_first_measurement_date(self):
         """Получение даты первого измерения из БД"""
