@@ -2511,7 +2511,7 @@ class InternetSpeedMonitor:
         periods = ["День", "Неделя", "Месяц", "Квартал", "Год"]
         self.stats_period_combo = ttk.Combobox(period_frame, values=periods, 
                                                textvariable=self.stats_period_var,
-                                               width=10, state='readonly',
+                                               width=7, state='readonly',
                                                font=self.scale_font('Arial', 10))
         self.stats_period_combo.pack(side='left', padx=5)
         self.stats_period_combo.bind('<<ComboboxSelected>>', self.on_stats_period_changed)
