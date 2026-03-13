@@ -181,7 +181,10 @@ class InternetSpeedMonitor:
         scaled_height = int(base_height * self.dpi_scale)
 
         # Настройка окна
-        self.root.title("SpeedWatch - Мониторинг скорости интернета")
+        # Заголовок окна с версией и копирайтом
+        copyright_symbol = "\u00A9"  # символ ©
+        self.root.title(f"SpeedWatch {copyright_symbol} v.{__version__} 2026 – Мониторинг скорости интернета")
+        
         # Убираем фиксированную геометрию
         # self.root.geometry(f"{scaled_width}x{scaled_height}")  # Закомментировать
         self.root.minsize(600, 400)  # Оставляем только минимальный
