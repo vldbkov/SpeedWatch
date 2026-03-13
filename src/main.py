@@ -185,10 +185,9 @@ class InternetSpeedMonitor:
         copyright_symbol = "\u00A9"  # символ ©
         self.root.title(f"SpeedWatch {copyright_symbol} v.{__version__} 2026 – Мониторинг скорости интернета")
 
-        # Убираем фиксированную геометрию
-        # self.root.geometry(f"{scaled_width}x{scaled_height}")  # Закомментировать
-        self.root.minsize(600, 400)  # Оставляем только минимальный
-        
+        # Запрещаем изменение размера окна
+        self.root.resizable(False, False)        
+
         # Скрываем окно до полной готовности
         self.root.withdraw()
 
