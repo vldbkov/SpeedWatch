@@ -176,7 +176,7 @@ class InternetSpeedMonitor:
         self.dpi_scale = get_dpi_scale_factor()
         
         # Увеличенное разрешение для современных мониторов
-        base_width, base_height = 810, 600
+        base_width, base_height = 780, 480  # Увеличили ширину с 700 до 780
         scaled_width = int(base_width * self.dpi_scale)
         scaled_height = int(base_height * self.dpi_scale)
 
@@ -255,7 +255,6 @@ class InternetSpeedMonitor:
         # Переменные для информации о подключении
         self.provider_var = tk.StringVar(value="—")
         self.connection_type_var = tk.StringVar(value="—")
-        self.server_info_var = tk.StringVar(value="—")
         self.ip_address_var = tk.StringVar(value="—")
         
         # === ПЕРЕМЕННЫЕ НАСТРОЕК ===
@@ -1091,13 +1090,14 @@ class InternetSpeedMonitor:
                     self.ping_var.set(f"{ping:.2f} ms" if ping else "0 ms")
                     self.jitter_var.set(f"{jitter:.2f} ms" if jitter else "0 ms")
                     
-                    # Обновляем информацию о сервере
-                    self.server_info_var.set(server if server else "—")
                     
-                    # Обновляем информацию о подключении из БД
+                    # ЯВНОЕ ОБНОВЛЕНИЕ ИНФОРМАЦИИ О ПОДКЛЮЧЕНИИ
                     self.provider_var.set(client_provider if client_provider else "—")
-                    self.ip_address_var.set(client_ip if client_ip else "—")
                     self.connection_type_var.set(connection_type if connection_type else "—")
+                    self.ip_address_var.set(client_ip if client_ip else "—")
+                    
+                    # Обновляем индикатор тарифа
+                    self.update_planned_speed_indicator()
                     
                     # Все поля подключения оставляем пустыми
                     self.provider_var.set("—")
@@ -1121,7 +1121,6 @@ class InternetSpeedMonitor:
                     self.upload_var.set(f"{upload:.2f} Mbps")
                     self.ping_var.set(f"{ping:.2f} ms")
                     self.jitter_var.set(f"{jitter:.2f} ms")
-                    self.server_info_var.set(server if server else "—")
                     self.update_monitor_tab_colors()
                     self.logger.info(f"Загружены последние значения: Download={download:.2f} Mbps")
                 else:
@@ -1221,23 +1220,19 @@ class InternetSpeedMonitor:
             planned = self.planned_speed_var.get()
             if planned > 0:
                 try:
-                    current = float(self.download_var.get().replace(' Mbps', ''))
+                    current = float(self.download_var.get().replace(' Mbps', '').replace('Ошибка', '0'))
                     if current > 0:
                         percent = (current / planned) * 100
-                        if percent < 70:
-                            status = "⚠️ Ниже тарифа"
-                        elif percent < 90:
-                            status = "⚡ Чуть ниже тарифа"
-                        else:
-                            status = "✅ Соответствует тарифу"
-                        self.planned_speed_indicator.config(text=f"Тариф: {planned} Mbps ({percent:.0f}%)")
+                        self.planned_speed_indicator.config(
+                            text=f"{planned} Mbps ({percent:.0f}%)",
+                            foreground='green' if percent >= 90 else 'orange'
+                        )
                     else:
-                        self.planned_speed_indicator.config(text=f"Тариф: {planned} Mbps")
+                        self.planned_speed_indicator.config(text=f"{planned} Mbps", foreground='black')
                 except:
-                    self.planned_speed_indicator.config(text=f"Тариф: {planned} Mbps")
+                    self.planned_speed_indicator.config(text=f"{planned} Mbps", foreground='black')
             else:
                 self.planned_speed_indicator.config(text="")
-
 
 # region ### Можно осторожно менять
     def analyze_connection_quality(self):
@@ -1963,97 +1958,162 @@ class InternetSpeedMonitor:
 
     def setup_monitor_tab(self):
         """Настройка вкладки мониторинга"""
-        # Фрейм с текущими показателями
-        current_frame = ttk.LabelFrame(self.monitor_frame, text="Параметры соединения", padding=self.scale_value(15))
-        current_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
+        
+        # === ВЕРХНИЙ БЛОК: Параметры соединения (слева) и Информация о подключении (справа) ===
+        top_frame = ttk.Frame(self.monitor_frame)
+        top_frame.pack(fill='x', padx=self.scale_value(10), pady=self.scale_value(5))
+        
+        # Настраиваем две колонки - обе сжимаются по содержимому
+        top_frame.columnconfigure(0, weight=0)  # левая колонка по содержимому
+        top_frame.columnconfigure(1, weight=0)  # правая колонка по содержимому
+
+        
+        # ===== ЛЕВАЯ КОЛОНКА: Параметры соединения =====
+        params_frame = ttk.LabelFrame(top_frame, text=" Параметры соединения ", padding=self.scale_value(8))
+        params_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        
+        # Центрируем заголовок
+        params_frame.configure(labelanchor='n')
+        
+        # Сетка для левой колонки
+        params_frame.columnconfigure(0, weight=0)  # метки
+        params_frame.columnconfigure(1, weight=1)  # значения
         
         # Скорость загрузки
-        ttk.Label(current_frame, text="Скорость загрузки:", font=self.scale_font('Arial', 12)).grid(row=0, column=0, sticky='w', pady=5)
-        self.download_label = ttk.Label(current_frame, textvariable=self.download_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
-        self.download_label.grid(row=0, column=1, padx=10, sticky='w')
-        
-        # Метка с заявленной скоростью (таким же шрифтом как скорость загрузки)
-        self.planned_speed_indicator = ttk.Label(current_frame, text="", font=self.scale_font('Arial', 12))
-        self.planned_speed_indicator.grid(row=0, column=2, padx=(20, 0), sticky='w')
+        ttk.Label(params_frame, text="Загрузка:", font=self.scale_font('Arial', 11)).grid(row=0, column=0, sticky='w', pady=2)
+        self.download_label = ttk.Label(params_frame, textvariable=self.download_var, 
+                                        font=self.scale_font('Arial', 14) + ('bold',))
+        self.download_label.grid(row=0, column=1, sticky='w', padx=5)
         
         # Скорость отдачи
-        ttk.Label(current_frame, text="Скорость отдачи:", font=self.scale_font('Arial', 12)).grid(row=1, column=0, sticky='w', pady=5)
-        self.upload_label = ttk.Label(current_frame, textvariable=self.upload_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
-        self.upload_label.grid(row=1, column=1, padx=10, sticky='w')
+        ttk.Label(params_frame, text="Отдача:", font=self.scale_font('Arial', 11)).grid(row=1, column=0, sticky='w', pady=2)
+        self.upload_label = ttk.Label(params_frame, textvariable=self.upload_var,
+                                      font=self.scale_font('Arial', 14) + ('bold',))
+        self.upload_label.grid(row=1, column=1, sticky='w', padx=5)
         
         # Пинг
-        ping_frame = ttk.Frame(current_frame)
-        ping_frame.grid(row=2, column=0, sticky='w', pady=5)
+        ttk.Label(params_frame, text="Пинг:", font=self.scale_font('Arial', 11)).grid(row=2, column=0, sticky='w', pady=2)
+        self.ping_label = ttk.Label(params_frame, textvariable=self.ping_var,
+                                    font=self.scale_font('Arial', 14) + ('bold',))
+        self.ping_label.grid(row=2, column=1, sticky='w', padx=5)
         
-        ttk.Label(ping_frame, text="Пинг:", font=self.scale_font('Arial', 12)).pack(side='left')
-        
-        # Знак вопроса для пинга
-        ping_question = tk.Label(ping_frame, text="❓", font=('Arial', 10, 'bold'), fg="blue", cursor="hand2")
-        ping_question.pack(side='left', padx=(2, 0))
-        ping_question.bind("<Button-1>", lambda e: self.show_term_explanation("ping"))
-        
-        self.ping_label = ttk.Label(current_frame, textvariable=self.ping_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
-        self.ping_label.grid(row=2, column=1, padx=10, sticky='w')
-        
-        # Jitter
-        jitter_frame = ttk.Frame(current_frame)
-        jitter_frame.grid(row=3, column=0, sticky='w', pady=5)       
-        ttk.Label(jitter_frame, text="Джиттер:", font=self.scale_font('Arial', 12)).pack(side='left')
-        
-        # Знак вопроса для джиттера
-        jitter_question = tk.Label(jitter_frame, text="❓", font=('Arial', 10, 'bold'), fg="blue", cursor="hand2")
-        jitter_question.pack(side='left', padx=(2, 0))
-        jitter_question.bind("<Button-1>", lambda e: self.show_term_explanation("jitter"))
-        
-        self.jitter_label = ttk.Label(current_frame, textvariable=self.jitter_var, font=self.scale_font('Arial', 16) + ('bold',), width=12, anchor='w')
-        self.jitter_label.grid(row=3, column=1, padx=10, sticky='w')
+        # Джиттер
+        ttk.Label(params_frame, text="Джиттер:", font=self.scale_font('Arial', 11)).grid(row=3, column=0, sticky='w', pady=2)
+        self.jitter_label = ttk.Label(params_frame, textvariable=self.jitter_var,
+                                      font=self.scale_font('Arial', 14) + ('bold',))
+        self.jitter_label.grid(row=3, column=1, sticky='w', padx=5)
         
         # Время последнего измерения
-        ttk.Label(current_frame, text="Последнее измерение:", font=self.scale_font('Arial', 12)).grid(row=4, column=0, sticky='w', pady=5)
-        self.last_check_label = ttk.Label(current_frame, textvariable=self.last_check_var, font=self.scale_font('Arial', 11), width=16, anchor='w')
-        self.last_check_label.grid(row=4, column=1, padx=10, sticky='w')
-
-        # === ФРЕЙМ: Информация о подключении ===
-        info_frame = ttk.LabelFrame(self.monitor_frame, text="Информация о подключении", padding=self.scale_value(15))
-        info_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(10))
-
-        # Провайдер
-        ttk.Label(info_frame, text="Провайдер:", font=self.scale_font('Arial', 11)).grid(row=0, column=0, sticky='w', pady=3)
-        ttk.Label(info_frame, textvariable=self.provider_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=0, column=1, sticky='w', padx=10)
-
+        ttk.Label(params_frame, text="Последнее:", font=self.scale_font('Arial', 11)).grid(row=4, column=0, sticky='w', pady=2)
+        self.last_check_label = ttk.Label(params_frame, textvariable=self.last_check_var,
+                                          font=self.scale_font('Arial', 11))
+        self.last_check_label.grid(row=4, column=1, sticky='w', padx=5)
+        
+        # ===== ПРАВАЯ КОЛОНКА: Информация о подключении =====
+        info_frame = ttk.LabelFrame(top_frame, text=" Подключение ", padding=self.scale_value(8))
+        info_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        
+        # Центрируем заголовок
+        info_frame.configure(labelanchor='n')
+        
+        # Сетка для правой колонки
+        info_frame.columnconfigure(0, weight=0)  # метки
+        info_frame.columnconfigure(1, weight=1)  # значения
+        
+        # Тариф (самый первый)
+        ttk.Label(info_frame, text="Тариф:", font=self.scale_font('Arial', 11)).grid(row=0, column=0, sticky='w', pady=2)
+        self.planned_speed_indicator = ttk.Label(info_frame, text="", font=self.scale_font('Arial', 11))
+        self.planned_speed_indicator.grid(row=0, column=1, sticky='w', padx=5)
+        
+        # Провайдер (с переносом текста)
+        ttk.Label(info_frame, text="Провайдер:", font=self.scale_font('Arial', 11)).grid(row=1, column=0, sticky='w', pady=2)
+        self.provider_label = ttk.Label(info_frame, textvariable=self.provider_var,
+                                        font=self.scale_font('Arial', 11), wraplength=200)
+        self.provider_label.grid(row=1, column=1, sticky='w', padx=5)
+        
         # Тип подключения
-        ttk.Label(info_frame, text="Подключение:", font=self.scale_font('Arial', 11)).grid(row=1, column=0, sticky='w', pady=3)
-        ttk.Label(info_frame, textvariable=self.connection_type_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=1, column=1, sticky='w', padx=10)
-
-        # Сервер
-        ttk.Label(info_frame, text="Сервер:", font=self.scale_font('Arial', 11)).grid(row=2, column=0, sticky='w', pady=3)
-        ttk.Label(info_frame, textvariable=self.server_info_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=2, column=1, sticky='w', padx=10)
-
-        # IP адрес
-        ttk.Label(info_frame, text="IP адрес:", font=self.scale_font('Arial', 11)).grid(row=3, column=0, sticky='w', pady=3)
-        ttk.Label(info_frame, textvariable=self.ip_address_var, font=self.scale_font('Arial', 11) + ('bold',)).grid(row=3, column=1, sticky='w', padx=10)
-
-        # Фрейм с управлением
+        ttk.Label(info_frame, text="Подключение:", font=self.scale_font('Arial', 11)).grid(row=2, column=0, sticky='w', pady=2)
+        self.connection_label = ttk.Label(info_frame, textvariable=self.connection_type_var,
+                                          font=self.scale_font('Arial', 11))
+        self.connection_label.grid(row=2, column=1, sticky='w', padx=5)
+        
+        # IP адрес (без сервера)
+        ttk.Label(info_frame, text="IP адрес:", font=self.scale_font('Arial', 11)).grid(row=3, column=0, sticky='w', pady=2)
+        self.ip_label = ttk.Label(info_frame, textvariable=self.ip_address_var,
+                                   font=self.scale_font('Arial', 11))
+        self.ip_label.grid(row=3, column=1, sticky='w', padx=5)
+        
+        # === БЛОК УПРАВЛЕНИЯ (КНОПКИ И ТАЙМЕР) ===
         control_frame = ttk.Frame(self.monitor_frame)
-        control_frame.pack(fill='x', padx=self.scale_value(15), pady=self.scale_value(20))
+        control_frame.pack(fill='x', padx=self.scale_value(10), pady=self.scale_value(5))
         
-        # Кнопки управления
-        self.start_button = ttk.Button(control_frame, text="Запуск мониторинга", command=self.start_monitoring)
-        self.start_button.pack(side='left', padx=5)
+        # Кнопки слева
+        buttons_frame = ttk.Frame(control_frame)
+        buttons_frame.pack(side='left')
         
-        self.stop_button = ttk.Button(control_frame, text="Остановить", command=self.stop_monitoring, state='disabled')
-        self.stop_button.pack(side='left', padx=5)
+        self.start_button = tk.Button(buttons_frame, text="Старт мониторинг", command=self.start_monitoring,
+                                      bg='#f0f0f0', relief='raised', bd=2,
+                                      font=self.scale_font('Arial', 10))
+        self.start_button.pack(side='left', padx=2)
         
-        self.test_button = ttk.Button(control_frame, text="Тест сейчас", command=self.run_speed_test)
-        self.test_button.pack(side='left', padx=self.scale_value(5))
+        self.stop_button = tk.Button(buttons_frame, text="Стоп", command=self.stop_monitoring,
+                                     bg='#f0f0f0', relief='raised', bd=2, state='disabled',
+                                     font=self.scale_font('Arial', 10), width=5)
+        self.stop_button.pack(side='left', padx=2)
         
-        # Информация о следующем тесте
-        ttk.Label(control_frame, text="Следующий тест через:", font=self.scale_font('Arial', 10)).pack(side='left', padx=self.scale_value(20))
-        ttk.Label(control_frame, textvariable=self.next_test_var, font=self.scale_font('Arial', 11) + ('bold',)).pack(side='left')
+        self.test_button = tk.Button(buttons_frame, text="Тест сейчас", command=self.run_speed_test,
+                                     bg='#f0f0f0', relief='raised', bd=2,
+                                     font=self.scale_font('Arial', 10))
+        self.test_button.pack(side='left', padx=2)
         
-        # Статус бар ПОД кнопками управления
-        status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=5)
-        status_bar.pack(fill='x', padx=self.scale_value(15), pady=(0, self.scale_value(15)))
+        # Таймер справа
+        timer_frame = ttk.Frame(control_frame)
+        timer_frame.pack(side='right')
+        
+        ttk.Label(timer_frame, text="Следующий тест через:", font=self.scale_font('Arial', 10)).pack(side='left')
+        ttk.Label(timer_frame, textvariable=self.next_test_var, font=self.scale_font('Arial', 11) + ('bold',)).pack(side='left', padx=5)
+
+        # Пустой фрейм для отступа
+        ttk.Frame(self.monitor_frame, height=5).pack()
+
+        # === СТАТУС БАР ===
+        status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=3)
+        status_bar.pack(fill='x', padx=self.scale_value(5), pady=(0, self.scale_value(3)))
+        status_bar.pack_propagate(True)  # разрешаем сжатие
+        
+        # Обновляем индикатор тарифа и цвета
+        self.update_planned_speed_indicator()
+        self.update_monitor_tab_colors()
+
+        # Обновляем layout и сжимаем окно
+        self.monitor_frame.update_idletasks()
+        
+        # Получаем реальную ширину содержимого
+        content_width = self.monitor_frame.winfo_reqwidth()
+        
+        # Добавляем запас для правой колонки (примерно 50 пикселей)
+        extra_width = int(50 * self.dpi_scale)
+        needed_width = content_width + extra_width
+        
+        # Получаем оптимальную высоту содержимого
+        content_height = self.monitor_frame.winfo_reqheight()
+        
+        # Добавляем запас для статус-бара (65 пикселей)
+        total_height = content_height + 65
+        
+        # Если текущая ширина окна меньше необходимой, увеличиваем
+        current_width = self.root.winfo_width()
+        if current_width < needed_width:
+            self.root.geometry(f"{needed_width}x{total_height}")
+        elif current_width > needed_width + 50:
+            # Если окно сильно шире, уменьшаем
+            self.root.geometry(f"{needed_width}x{total_height}")
+        else:
+            # Ширина нормальная, меняем только высоту
+            self.root.geometry(f"{current_width}x{total_height}")
+            
+
+
 
     def setup_graph_tab(self):
         """Настройка вкладки с графиками"""
@@ -3911,6 +3971,7 @@ class InternetSpeedMonitor:
         # После завершения очищаем строку
         print("\r" + " " * 30 + "\r", end='', flush=True)
 # endregion
+
     def save_test_results(self, download, upload, ping, jitter, server, server_city="", server_provider="", 
                           client_ip="", client_provider="", connection_type=""):
         """Сохранение результатов теста в БД"""
@@ -3960,7 +4021,6 @@ class InternetSpeedMonitor:
             # ЯВНОЕ ОБНОВЛЕНИЕ ИНФОРМАЦИИ О ПОДКЛЮЧЕНИИ
             self.provider_var.set(client_provider if client_provider else "—")
             self.connection_type_var.set(connection_type if connection_type else "—")
-            self.server_info_var.set(server if server else "—")
             self.ip_address_var.set(client_ip if client_ip else "—")
             
             self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
