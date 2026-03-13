@@ -3195,7 +3195,8 @@ class InternetSpeedMonitor:
                 self.premium_export.set(True)
                 self._save_premium_status()
                 self._refresh_settings_tab()
-                self.update_window_title_with_premium()
+                self.update_window_title_with_premium()              
+                self.refresh_all_tabs() # ОБНОВЛЯЕМ ВСЕ ВКЛАДКИ
                 messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
                 # Ключ использован, дальше не передаем
                 license_key = None
@@ -4907,6 +4908,30 @@ class InternetSpeedMonitor:
             self.logger.info("Вкладка настроек обновлена после активации премиум")
         except Exception as e:
             self.logger.error(f"Ошибка обновления вкладки настроек: {e}")
+
+    def refresh_all_tabs(self):
+        """Обновить все вкладки для применения премиум-статуса"""
+        try:
+            # Пересоздаем содержимое каждой вкладки
+            if hasattr(self, 'graph_frame'):
+                for widget in self.graph_frame.winfo_children():
+                    widget.destroy()
+                self.setup_graph_tab()
+            
+            if hasattr(self, 'log_frame'):
+                for widget in self.log_frame.winfo_children():
+                    widget.destroy()
+                self.setup_log_tab()
+            
+            if hasattr(self, 'stats_frame'):
+                for widget in self.stats_frame.winfo_children():
+                    widget.destroy()
+                self.setup_stats_tab()
+            
+            self.logger.info("Все вкладки обновлены после активации премиум")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка обновления вкладок: {e}")
 
     def _save_premium_status(self):
         """Сохранение статуса премиум-активации в настройках"""
