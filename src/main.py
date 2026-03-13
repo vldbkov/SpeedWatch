@@ -4763,7 +4763,7 @@ class InternetSpeedMonitor:
         """Экспорт графика в PNG (премиум-функция)"""
         try:
             if not self.premium_export.get():
-                show_premium_dialog(self.root, self._do_export_graph)
+                show_premium_dialog(self.root, self._activate_and_export_graph)
                 return
             
             self._do_export_graph(None)
@@ -4771,6 +4771,18 @@ class InternetSpeedMonitor:
         except Exception as e:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
+    
+    def _activate_and_export_graph(self, license_key):
+        """Активация и экспорт графика"""
+        if license_key:
+            self.premium_export.set(True)
+            self._save_premium_status()
+            self._refresh_settings_tab()
+            self.update_window_title_with_premium()
+            self.refresh_all_tabs()
+            messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+        
+        self._do_export_graph(None)
 
     def _do_export_graph(self, license_key):
         """Фактическое выполнение экспорта графика (после активации)"""
@@ -4808,18 +4820,27 @@ class InternetSpeedMonitor:
     def export_log(self):
         """Экспорт журнала в CSV (премиум-функция)"""
         try:
-            # Проверяем, активирован ли премиум-доступ
             if not self.premium_export.get():
-                # Показываем диалог активации
-                show_premium_dialog(self.root, self._do_export_log)
+                show_premium_dialog(self.root, self._activate_and_export_log)
                 return
             
-            # Если уже активирован - сразу выполняем экспорт
             self._do_export_log(None)
             
         except Exception as e:
-            self.logger.error(f"Ошибка в export_log: {e}")
-            messagebox.showerror("Ошибка", f"Ошибка: {e}")
+            self.logger.error(f"Ошибка экспорта журнала: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
+    
+    def _activate_and_export_log(self, license_key):
+        """Активация и экспорт журнала"""
+        if license_key:
+            self.premium_export.set(True)
+            self._save_premium_status()
+            self._refresh_settings_tab()
+            self.update_window_title_with_premium()
+            self.refresh_all_tabs()
+            messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+        
+        self._do_export_log(None)
 
     def _do_export_log(self, license_key):
         """Фактическое выполнение экспорта (после активации)"""
