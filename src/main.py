@@ -182,7 +182,9 @@ class InternetSpeedMonitor:
 
         # Настройка окна
         self.root.title("SpeedWatch - Мониторинг скорости интернета")
-        self.root.geometry(f"{scaled_width}x{scaled_height}")
+        # Убираем фиксированную геометрию
+        # self.root.geometry(f"{scaled_width}x{scaled_height}")  # Закомментировать
+        self.root.minsize(600, 400)  # Оставляем только минимальный
         
         # Скрываем окно до полной готовности
         self.root.withdraw()
@@ -670,7 +672,32 @@ class InternetSpeedMonitor:
         y = (screen_height // 2) - (height // 2)
         
         self.root.geometry(f'{width}x{height}+{x}+{y}')
-    
+
+    def on_tab_changed(self, event):
+        """Изменение размера при переключении вкладок"""
+        selected_tab = self.notebook.index(self.notebook.select())
+        
+        # Получаем текущую выбранную вкладку
+        current_tab = self.notebook.nametowidget(self.notebook.select())
+        
+        # Обновляем layout
+        current_tab.update_idletasks()
+        
+        # Получаем необходимый размер
+        req_width = current_tab.winfo_reqwidth()
+        req_height = current_tab.winfo_reqheight()
+        
+        # Добавляем отступы для рамок и вкладок
+        total_width = req_width + 30
+        total_height = req_height + 50
+        
+        # Устанавливаем минимальный размер
+        self.root.minsize(total_width, total_height)
+        
+        # Устанавливаем размер окна
+        self.root.geometry(f"{total_width}x{total_height}")
+        self.center_window()
+
     def scale_font(self, font_name, size):
         """Масштабирует размер шрифта в зависимости от DPI."""
         scaled_size = int(size * self.dpi_scale)
@@ -1921,6 +1948,9 @@ class InternetSpeedMonitor:
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill='both', expand=True, padx=self.scale_value(15), pady=self.scale_value(15))
         
+        # Привязываем событие смены вкладки
+        self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
+        
         # Вкладка мониторинга
         self.monitor_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.monitor_frame, text='Мониторинг')
@@ -2080,6 +2110,10 @@ class InternetSpeedMonitor:
         status_bar = ttk.Label(self.monitor_frame, textvariable=self.status_var, relief=tk.SUNKEN, padding=3)
         status_bar.pack(fill='x', padx=self.scale_value(5), pady=(0, self.scale_value(3)))
         status_bar.pack_propagate(True)  # разрешаем сжатие
+        
+        # Пустой фрейм для дополнительного отступа
+        empty_frame = ttk.Frame(self.monitor_frame, height=10)
+        empty_frame.pack(fill='x')
         
         # Обновляем индикатор тарифа и цвета
         self.update_planned_speed_indicator()
