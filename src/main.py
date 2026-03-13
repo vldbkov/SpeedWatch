@@ -3406,31 +3406,6 @@ class InternetSpeedMonitor:
         ttk.Button(clean_frame, text="🗑️ Очистить сейчас", 
                   command=self.manual_clean_old).pack(anchor='w', pady=5)
 
-        # === ИНФОРМАЦИЯ О ПРОГРАММЕ ===
-        info_frame = ttk.LabelFrame(settings_frame, text="Информация", padding=10)
-        info_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=15)
-        
-        # Название и версия
-        version_text = f"SpeedWatch v{__version__}"
-        ttk.Label(info_frame, text=version_text, font=self.scale_font('Arial', 12) + ('bold',)).pack()
-        
-        # Описание
-        ttk.Label(info_frame, text="Мониторинг скорости интернет-соединения", 
-                 font=self.scale_font('Arial', 9)).pack()
-        
-        # Статус премиум-функций
-        premium_text = "✓ Премиум: Экспорт CSV " + ("активирован" if self.premium_export.get() else "не активирован")
-        premium_color = "green" if self.premium_export.get() else "orange"
-        
-        premium_label = ttk.Label(info_frame, text=premium_text, 
-                                  font=self.scale_font('Arial', 9), 
-                                  foreground=premium_color)
-        premium_label.pack(pady=(5, 0))
-        
-        # Год
-        ttk.Label(info_frame, text=f"© {datetime.now().year}", 
-                 font=self.scale_font('Arial', 8)).pack(pady=(5, 0))
-
     def create_tray_icon(self):
         """Создание иконки в системном трее"""
         try:
