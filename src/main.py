@@ -184,7 +184,7 @@ class InternetSpeedMonitor:
         # Заголовок окна с версией и копирайтом
         copyright_symbol = "\u00A9"  # символ ©
         self.root.title(f"SpeedWatch {copyright_symbol} v.{__version__} 2026 – Мониторинг скорости интернета")
-        
+
         # Убираем фиксированную геометрию
         # self.root.geometry(f"{scaled_width}x{scaled_height}")  # Закомментировать
         self.root.minsize(600, 400)  # Оставляем только минимальный
@@ -1253,9 +1253,18 @@ class InternetSpeedMonitor:
                     current = float(self.download_var.get().replace(' Mbps', '').replace('Ошибка', '0'))
                     if current > 0:
                         percent = (current / planned) * 100
+                        
+                        # Выбираем цвет по новой шкале
+                        if percent >= 90:
+                            color = 'green'
+                        elif percent >= 70:
+                            color = 'orange'
+                        else:
+                            color = 'red'
+                        
                         self.planned_speed_indicator.config(
                             text=f"{planned} Mbps ({percent:.0f}%)",
-                            foreground='green' if percent >= 90 else 'orange'
+                            foreground=color
                         )
                     else:
                         self.planned_speed_indicator.config(text=f"{planned} Mbps", foreground='black')
