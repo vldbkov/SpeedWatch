@@ -3110,10 +3110,10 @@ class InternetSpeedMonitor:
         try:
             # Проверяем премиум-доступ
             if not self.premium_export.get():
-                show_premium_dialog(self.root, lambda key: self._show_format_dialog(key))
+                show_premium_dialog(self.root, self._generate_report)
                 return
             
-            self._show_format_dialog(None)
+            self._generate_report(None)
             
         except Exception as e:
             self.logger.error(f"Ошибка экспорта отчета: {e}")
@@ -3190,6 +3190,16 @@ class InternetSpeedMonitor:
     def _generate_report(self, license_key, format_type='html'):
         """Генерация и сохранение отчета в выбранном формате"""
         try:
+            # СНАЧАЛА активируем премиум, если есть ключ
+            if license_key:
+                self.premium_export.set(True)
+                self._save_premium_status()
+                self._refresh_settings_tab()
+                self.update_window_title_with_premium()
+                messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+                # Ключ использован, дальше не передаем
+                license_key = None
+            
             # Получаем данные за выбранный период
             stats = self.get_stats_for_period()
             if not stats:
@@ -3242,13 +3252,6 @@ class InternetSpeedMonitor:
             if not filename:
                 return
             
-            # Если пришел ключ - активируем премиум
-            if license_key:
-                self.premium_export.set(True)
-                self._save_premium_status()
-                self._refresh_settings_tab()
-                self.update_window_title_with_premium()
-            
             if success:
                 self.status_var.set(f"Отчет сохранен: {filename}")
                 self.logger.info(f"Отчет сохранен в {filename}")
@@ -3258,9 +3261,6 @@ class InternetSpeedMonitor:
                 if messagebox.askyesno("Открыть файл", "Открыть сохраненный отчет?"):
                     import os
                     os.startfile(filename)
-                
-                if license_key:
-                    messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
             else:
                 messagebox.showerror("Ошибка", "Не удалось сохранить отчет")
             
