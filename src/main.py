@@ -4348,7 +4348,7 @@ class InternetSpeedMonitor:
                 self.next_test_var.set(timer_text)
                 
                 if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
-                    print(f"\rСледующий тест через: {timer_text}   ", end='', flush=True)
+                    print(f"\rСледующий тест через: {timer_text}", end='', flush=True)
                 
                 if not self.wait_animation_job:
                     self.start_wait_animation()
