@@ -681,6 +681,42 @@ class InternetSpeedMonitor:
         
         self.root.geometry(f'{width}x{height}+{x}+{y}')
 
+    def resize_window_to_content(self):
+        """Пересчет размера окна под содержимое вкладки мониторинга"""
+        try:
+            # Обновляем layout
+            self.monitor_frame.update_idletasks()
+            
+            # Получаем реальную ширину содержимого
+            content_width = self.monitor_frame.winfo_reqwidth()
+            
+            # Добавляем небольшой запас для отступов (примерно 40 пикселей)
+            extra_width = int(40 * self.dpi_scale)
+            needed_width = content_width + extra_width
+            
+            # Получаем оптимальную высоту содержимого
+            content_height = self.monitor_frame.winfo_reqheight()
+            
+            # Добавляем запас для статус-бара (65 пикселей)
+            total_height = content_height + 65
+            
+            # Получаем текущую ширину окна
+            current_width = self.root.winfo_width()
+            
+            # Устанавливаем новый размер
+            if current_width < needed_width:
+                self.root.geometry(f"{needed_width}x{total_height}")
+            elif current_width > needed_width + 50:
+                self.root.geometry(f"{needed_width}x{total_height}")
+            else:
+                self.root.geometry(f"{current_width}x{total_height}")
+                
+            self.center_window()
+            self.logger.info(f"Размер окна пересчитан: ширина={needed_width}, высота={total_height}")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при пересчете размера окна: {e}")
+
     def on_tab_changed(self, event):
         """Изменение размера при переключении вкладок"""
         selected_tab = self.notebook.index(self.notebook.select())
@@ -2167,9 +2203,9 @@ class InternetSpeedMonitor:
         top_frame = ttk.Frame(self.monitor_frame)
         top_frame.pack(fill='x', padx=self.scale_value(10), pady=self.scale_value(5))
         
-        # Настраиваем две колонки - обе сжимаются по содержимому
+        # Настраиваем колонки: левая по содержимому, правая растягивается
         top_frame.columnconfigure(0, weight=0)  # левая колонка по содержимому
-        top_frame.columnconfigure(1, weight=0)  # правая колонка по содержимому
+        top_frame.columnconfigure(1, weight=1)  # правая колонка растягивается
 
         
         # ===== ЛЕВАЯ КОЛОНКА: Параметры соединения =====
@@ -2215,7 +2251,7 @@ class InternetSpeedMonitor:
         
         # ===== ПРАВАЯ КОЛОНКА: Информация о подключении =====
         info_frame = ttk.LabelFrame(top_frame, text=" Подключение ", padding=self.scale_value(8))
-        info_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        info_frame.grid(row=0, column=1, sticky='ew', padx=(5, 0))
         
         # Центрируем заголовок
         info_frame.configure(labelanchor='n')
@@ -2320,9 +2356,6 @@ class InternetSpeedMonitor:
             # Ширина нормальная, меняем только высоту
             self.root.geometry(f"{current_width}x{total_height}")
             
-
-
-
     def setup_graph_tab(self):
         """Настройка вкладки с графиками"""
         # Панель управления графиками
@@ -4239,8 +4272,8 @@ class InternetSpeedMonitor:
             self.update_monitor_tab_colors()
             self.update_planned_speed_indicator()
             
-            # Принудительное обновление окна
-            self.root.update_idletasks()
+            # Пересчитываем размер окна под новое содержимое
+            self.resize_window_to_content()
             
             self.root.after(0, self.update_log)
             self.root.after(0, self.update_graph)
