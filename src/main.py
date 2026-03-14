@@ -681,6 +681,32 @@ class InternetSpeedMonitor:
         
         self.root.geometry(f'{width}x{height}+{x}+{y}')
 
+    def adjust_height_only(self, target_frame):
+        """Пересчет только высоты окна под содержимое указанного фрейма
+        Ширина окна НЕ меняется
+        """
+        try:
+            # Обновляем layout
+            target_frame.update_idletasks()
+            
+            # Получаем оптимальную высоту содержимого
+            content_height = target_frame.winfo_reqheight()
+            
+            # Добавляем запас для статус-бара (65 пикселей) и вкладок (примерно 30)
+            total_height = content_height + 65 + 30
+            
+            # Получаем текущую ширину окна (НЕ МЕНЯЕМ её)
+            current_width = self.root.winfo_width()
+            
+            # Устанавливаем новый размер (меняем только высоту)
+            self.root.geometry(f"{current_width}x{total_height}")
+            
+            self.center_window()
+            self.logger.info(f"Высота окна пересчитана для {target_frame}: {total_height}")
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при пересчете высоты окна: {e}")
+
     def resize_window_to_content(self):
         """Пересчет размера окна под содержимое вкладки мониторинга"""
         try:
@@ -2897,6 +2923,9 @@ class InternetSpeedMonitor:
             # Разрешаем каждому блоку иметь свою высоту
             self.problems_frame.pack_propagate(True)
             self.total_stats_frame.pack_propagate(True)
+            
+            # Пересчитываем высоту окна под новый размер блока проблемных периодов
+            self.adjust_height_only(self.stats_frame)
             
         except Exception as e:
             self.logger.error(f"Ошибка обновления статистики: {e}")
