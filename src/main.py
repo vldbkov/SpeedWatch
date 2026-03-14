@@ -3834,8 +3834,10 @@ class InternetSpeedMonitor:
                          ('premium_export', '1' if self.premium_export.get() else '0'))
             # ======================
 
+            auto_start_value = '1' if self.auto_start_var.get() else '0'
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
-                         ('auto_start', '1' if self.auto_start_var.get() else '0'))
+                         ('auto_start', auto_start_value))
+
             db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
                          ('minimize_to_tray', '1' if self.minimize_to_tray_var.get() else '0'))
             
@@ -3941,7 +3943,6 @@ class InternetSpeedMonitor:
                 
         except Exception as e:
             self.logger.error(f"Ошибка обновления автозапуска: {e}")
-
 # endregion
 
     def run_speed_test(self):
