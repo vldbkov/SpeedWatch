@@ -400,18 +400,21 @@ class InternetSpeedMonitor:
             return None
 
     def is_record_valid(self, download, upload, ping, jitter):
-        """Проверка валидности записи (должно быть минимум 3 показателя)"""
-        count = 0
-        if download is not None and download > 0:
-            count += 1
-        if upload is not None and upload > 0:
-            count += 1
-        if ping is not None and ping > 0:
-            count += 1
-        if jitter is not None and jitter >= 0:
-            count += 1
+        """Проверка, что запись содержит достаточно данных для сохранения"""
+        # Считаем запись валидной, если есть хотя бы ping или jitter
+        has_ping = ping is not None and ping > 0
+        has_jitter = jitter is not None and jitter > 0
         
-        return count >= 3  # минимум 3 показателя
+        if not (has_ping or has_jitter):
+            return False
+        
+        # Если есть download или upload, проверяем что они не отрицательные
+        if download is not None and download < 0:
+            return False
+        if upload is not None and upload < 0:
+            return False
+            
+        return True
 
     def analyze_records_validity(self):
         """Анализ всех записей в БД на валидность"""
@@ -1243,19 +1246,62 @@ class InternetSpeedMonitor:
                             )
                             output = result.stdout
                             
-                            # Ищем строку с типом радио
+                            # Разбиваем на строки и ищем "Тип радио:" или "Radio type:"
                             lines = output.split('\n')
                             for line in lines:
                                 line = line.strip()
-                                # Проверяем наличие ключевых слов
-                                if ('радио' in line.lower() or 'radio' in line.lower() or 
-                                    'ЁЇ а ¤Ё®' in line or 'ип радио' in line):
+                                
+                                # Ищем точную строку с типом радио (русский вариант)
+                                if 'Тип радио:' in line:
                                     parts = line.split(':')
                                     if len(parts) > 1:
-                                        protocol = parts[1].strip()
+                                        protocol_raw = parts[1].strip()
+                                        # Извлекаем 802.11ac
+                                        if '802.11ac' in protocol_raw:
+                                            protocol = '802.11ac'
+                                        elif '802.11n' in protocol_raw:
+                                            protocol = '802.11n'
+                                        elif '802.11g' in protocol_raw:
+                                            protocol = '802.11g'
+                                        else:
+                                            protocol = protocol_raw
                                         break
-                        except Exception:
-                            pass
+                                
+                                # Английский вариант
+                                elif 'Radio type:' in line:
+                                    parts = line.split(':')
+                                    if len(parts) > 1:
+                                        protocol_raw = parts[1].strip()
+                                        if '802.11ac' in protocol_raw:
+                                            protocol = '802.11ac'
+                                        elif '802.11n' in protocol_raw:
+                                            protocol = '802.11n'
+                                        elif '802.11g' in protocol_raw:
+                                            protocol = '802.11g'
+                                        else:
+                                            protocol = protocol_raw
+                                        break
+                            
+                            # Если не нашли через netsh, пробуем альтернативный метод
+                            if protocol == "—" or not protocol:
+                                # Пробуем получить через wmic
+                                try:
+                                    result = subprocess.run(
+                                        ['wmic', 'path', 'Win32_NetworkAdapter', 'where', 
+                                         'NetConnectionID="{}"'.format(active_iface), 
+                                         'get', 'Name'],
+                                        capture_output=True, text=True, encoding='cp1251', errors='ignore'
+                                    )
+                                    output = result.stdout
+                                    if '802.11ac' in output.lower():
+                                        protocol = '802.11ac'
+                                    elif '802.11n' in output.lower():
+                                        protocol = '802.11n'
+                                except:
+                                    pass
+                            
+                        except Exception as e:
+                            self.logger.error(f"Ошибка получения протокола Wi-Fi: {e}")
                     break
             
             if connection_type == "Неизвестно":
@@ -1265,7 +1311,16 @@ class InternetSpeedMonitor:
                         protocol = "Ethernet"
                         break
             
-            return connection_type, protocol, active_iface
+            # Формируем итоговую строку
+            if connection_type == "Wi-Fi" and protocol and protocol != "—":
+                if '802.11' in protocol:
+                    connection_display = f"Wi-Fi ({protocol})"
+                else:
+                    connection_display = f"Wi-Fi ({protocol})"
+            else:
+                connection_display = connection_type
+            
+            return connection_display, protocol, active_iface
             
         except Exception as e:
             self.logger.error(f"Ошибка определения типа подключения: {e}")
@@ -1458,33 +1513,71 @@ class InternetSpeedMonitor:
 
     def update_planned_speed_indicator(self):
         """Обновить индикатор заявленной скорости"""
-        if hasattr(self, 'planned_speed_var') and hasattr(self, 'download_var'):
-            planned = self.planned_speed_var.get()
-            if planned > 0:
+        if not hasattr(self, 'planned_speed_var') or not hasattr(self, 'download_var'):
+            return
+            
+        planned = self.planned_speed_var.get()
+        if planned <= 0:
+            self.planned_speed_indicator.config(text="")
+            return
+            
+        try:
+            current_text = self.download_var.get()
+            
+            # Проверяем, был ли уже тест (есть ли данные)
+            has_real_data = False
+            if current_text and 'Ошибка' not in current_text and '0 Mbps' not in current_text:
                 try:
-                    current = float(self.download_var.get().replace(' Mbps', '').replace('Ошибка', '0'))
-                    if current > 0:
-                        percent = (current / planned) * 100
-                        
-                        # Выбираем цвет по новой шкале
-                        if percent >= 90:
-                            color = 'green'
-                        elif percent >= 70:
-                            color = 'orange'
-                        else:
-                            color = 'red'
-                        
-                        self.planned_speed_indicator.config(
-                            text=f"{planned} Mbps ({percent:.0f}%)",
-                            foreground=color
-                        )
-                    else:
-                        self.planned_speed_indicator.config(text=f"{planned} Mbps", foreground='black')
+                    current = float(current_text.replace(' Mbps', '').replace('Ошибка', '0').replace('None', '0'))
+                    has_real_data = (current > 0)
                 except:
-                    self.planned_speed_indicator.config(text=f"{planned} Mbps", foreground='black')
+                    has_real_data = False
+            
+            if not has_real_data:
+                # Если данных нет - показываем только тариф
+                self.planned_speed_indicator.config(
+                    text=f"{planned} Mbps",
+                    foreground='black'
+                )
+                return
+            
+            # Если данные есть - показываем с процентом
+            try:
+                current = float(current_text.replace(' Mbps', '').replace('Ошибка', '0').replace('None', '0'))
+            except:
+                self.planned_speed_indicator.config(
+                    text=f"{planned} Mbps",
+                    foreground='black'
+                )
+                return
+            
+            if current > 0:
+                percent = (current / planned) * 100
+                
+                # Выбираем цвет по шкале
+                if percent >= 90:
+                    color = 'green'
+                elif percent >= 70:
+                    color = 'orange'
+                else:
+                    color = 'red'
+                
+                self.planned_speed_indicator.config(
+                    text=f"{planned} Mbps ({percent:.0f}%)",
+                    foreground=color
+                )
             else:
-                self.planned_speed_indicator.config(text="")
-
+                self.planned_speed_indicator.config(
+                    text=f"{planned} Mbps",
+                    foreground='black'
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка в update_planned_speed_indicator: {e}")
+            self.planned_speed_indicator.config(
+                text=f"{planned} Mbps",
+                foreground='black'
+            )
     def update_window_title_with_premium(self):
         """Обновить заголовок окна с премиум-статусом"""
         copyright_symbol = "\u00A9"
@@ -2277,7 +2370,7 @@ class InternetSpeedMonitor:
         
         # ===== ПРАВАЯ КОЛОНКА: Информация о подключении =====
         info_frame = ttk.LabelFrame(top_frame, text=" Подключение ", padding=self.scale_value(8))
-        info_frame.grid(row=0, column=1, sticky='ew', padx=(5, 0))
+        info_frame.grid(row=0, column=1, sticky='n', padx=(5, 0))
         
         # Центрируем заголовок
         info_frame.configure(labelanchor='n')
@@ -2285,10 +2378,12 @@ class InternetSpeedMonitor:
         # Сетка для правой колонки
         info_frame.columnconfigure(0, weight=0)  # метки
         info_frame.columnconfigure(1, weight=1)  # значения
+        # Увеличиваем минимальную ширину колонки со значениями
+        info_frame.grid_columnconfigure(1, minsize=140)
         
         # Тариф (самый первый)
         ttk.Label(info_frame, text="Тариф:", font=self.scale_font('Arial', 11)).grid(row=0, column=0, sticky='w', pady=2)
-        self.planned_speed_indicator = ttk.Label(info_frame, text="", font=self.scale_font('Arial', 11))
+        self.planned_speed_indicator = ttk.Label(info_frame, text="", font=('Arial', 13, 'bold'))
         self.planned_speed_indicator.grid(row=0, column=1, sticky='w', padx=5)
         
         # Провайдер (с переносом текста)
@@ -4008,30 +4103,188 @@ class InternetSpeedMonitor:
 # endregion
 
     def run_speed_test(self):
-        """Запуск теста скорости интернета"""
-        if self.test_in_progress:
-            self.logger.warning("Тест уже выполняется, пропускаем")
+        """Запуск теста скорости через SpeedTestRunner с отображением статусов"""
+        print("\n" + "="*50)
+        print("ЗАПУСК ТЕСТА СКОРОСТИ (PRINT)")
+        print("="*50)
+        
+        # Проверяем, не запущен ли уже тест
+        if hasattr(self, 'test_in_progress') and self.test_in_progress:
+            print("Тест уже выполняется")
             return
-            
-        self.logger.info("ЗАПУСК ТЕСТА СКОРОСТИ")
+        
         self.test_in_progress = True
         
-        # Останавливаем анимацию ожидания
-        self.stop_wait_animation()
-        
-        self.status_var.set("Выполняется тест скорости...")
+        # Блокируем кнопки на время теста
+        self.start_button.config(state='disabled')
         self.test_button.config(state='disabled')
         
-        # Запускаем анимацию теста
-        self.start_test_animation()
+        # Останавливаем мониторинг если он запущен
+        monitoring_was_running = False
+        if hasattr(self, 'monitoring_active') and self.monitoring_active:
+            monitoring_was_running = True
+            print("Мониторинг активен - останавливаем")
+            self.stop_monitoring()
         
-        # Сбрасываем таймер отсчета
-        self.next_test_var.set("--:--:--")
+        # Устанавливаем статус начала теста
+        self.status_var.set("🔍 Поиск лучшего сервера...")
+        self.root.update_idletasks()
+        print("Статус установлен: Поиск лучшего сервера")
         
         # Запускаем тест в отдельном потоке
-        test_thread = threading.Thread(target=self._perform_speed_test, daemon=True)
-        test_thread.start()
+        def run_test_thread():
+            print("Поток теста запущен")
+            
+            try:
+                # ===== НОВАЯ ВЕРСИЯ update_status С ЗАДЕРЖКАМИ =====
+                def update_status(msg):
+                    # Пропускаем только текстовые сообщения (без прогресс-баров)
+                    if any(x in msg for x in ['█', '░', '▁', '▂', '▃', '▄', '▅', '▆', '▇']):
+                        return
+                    
+                    # Фильтруем технические сообщения
+                    if 'openspeedtest_cli.py' in msg or 'завершил свою работу' in msg:
+                        return
+                    
+                    # Оставляем только информативные сообщения
+                    useful_keywords = ['поиск', 'сервер', 'download', 'upload', 'ping', 'jitter', 
+                                      'результат', 'тест', 'начинается', 'завершен']
+                    
+                    msg_lower = msg.lower()
+                    if not any(keyword in msg_lower for keyword in useful_keywords):
+                        return
+                    
+                    # Определяем эмодзи по типу сообщения
+                    if 'download:' in msg_lower:
+                        emoji = "📥"
+                    elif 'upload:' in msg_lower:
+                        emoji = "📤"
+                    elif 'ping:' in msg_lower:
+                        emoji = "📶"
+                    elif 'jitter:' in msg_lower:
+                        emoji = "⚡"
+                    elif 'сервер' in msg_lower or 'server' in msg_lower:
+                        emoji = "🖥️"
+                    elif 'поиск' in msg_lower:
+                        emoji = "🔍"
+                    elif 'начинается' in msg_lower:
+                        emoji = "🚀"
+                    else:
+                        emoji = "ℹ️"
+                    
+                    # Показываем в статус-баре
+                    self.root.after(0, lambda m=msg, e=emoji: self.status_var.set(f"{e} {m}"))              
 
+                # Импортируем runner здесь, чтобы избежать циклических импортов
+                from speedtest_runner import SpeedTestRunner
+                print("SpeedTestRunner импортирован")
+                
+                # Создаем runner и запускаем тест с callback
+                runner = SpeedTestRunner(logger=self.logger)
+                print("SpeedTestRunner создан")
+                
+                # Получаем настройки из интерфейса
+                duration = int(self.duration_var.get()) if hasattr(self, 'duration_var') else 10
+                threads = int(self.threads_var.get()) if hasattr(self, 'threads_var') else 8
+                print(f"Параметры теста: duration={duration}, threads={threads}")
+                
+                # Запускаем тест с callback
+                print("ЗАПУСК runner.run_test()...")
+                result = runner.run_test(
+                    duration=duration,
+                    threads=threads,
+                    no_submit=True,
+                    status_callback=update_status
+                )
+                print(f"runner.run_test() завершен, result={result}")
+                
+                if result:
+                    print(f"ПОЛУЧЕНЫ РЕЗУЛЬТАТЫ: download={result.get('download')}, upload={result.get('upload')}, ping={result.get('ping')}")
+                    
+                    # Проверяем валидность
+                    download_val = result.get('download')
+                    upload_val = result.get('upload')
+                    ping_val = result.get('ping')
+                    jitter_val = result.get('jitter')
+                    
+                    # Считаем валидным, если есть хотя бы ping или jitter
+                    if (ping_val is not None and ping_val > 0) or (jitter_val is not None and jitter_val > 0):
+                        print("Результаты частично валидны (есть ping/jitter) - сохраняем")
+                        
+                        # ===== ПОЛУЧАЕМ ДАННЫЕ КЛИЕНТА =====
+                        client_ip = getattr(self, 'client_ip', '')
+                        client_provider = getattr(self, 'client_provider', '')
+                        connection_type = getattr(self, 'connection_type', '')
+                        
+                        # Если их нет, пробуем получить из последнего измерения в БД
+                        if not client_ip or not client_provider or not connection_type:
+                            print("Данные клиента отсутствуют, пробуем загрузить из БД")
+                            try:
+                                db = self.get_db()
+                                if db:
+                                    db.execute('''
+                                        SELECT client_ip, client_provider, connection_type 
+                                        FROM speed_measurements 
+                                        WHERE client_ip IS NOT NULL AND client_ip != ''
+                                        ORDER BY timestamp DESC LIMIT 1
+                                    ''')
+                                    row = db.cursor.fetchone()
+                                    db.close()
+                                    if row:
+                                        client_ip = row[0] or client_ip
+                                        client_provider = row[1] or client_provider
+                                        connection_type = row[2] or connection_type
+                                        print(f"Загружено из БД: IP={client_ip}, Провайдер={client_provider}, Тип={connection_type}")
+                            except Exception as e:
+                                print(f"Ошибка загрузки данных клиента из БД: {e}")
+                        
+                        # Сохраняем результаты
+                        self.root.after(0, lambda: self.save_test_results(
+                            download=result.get('download', 0),
+                            upload=result.get('upload', 0),
+                            ping=result.get('ping', 0),
+                            jitter=result.get('jitter', 0),
+                            server=result.get('server', 'Unknown'),
+                            server_city=result.get('server_city', ''),
+                            server_provider=result.get('server_provider', ''),
+                            client_ip=client_ip,
+                            client_provider=client_provider,
+                            connection_type=connection_type
+                        ))
+                        
+                        print("save_test_results вызван")
+                        # ФИНАЛЬНОЕ СООБЩЕНИЕ (без технического текста)
+                        self.root.after(0, lambda: self.status_var.set("✅ Тест завершен успешно"))
+                    else:
+                        print(f"НЕвалидные результаты: {result}")
+                        self.root.after(0, lambda: self.status_var.set("❌ Ошибка: невалидные данные"))
+                else:
+                    print("result is None")
+                    self.root.after(0, lambda: self.status_var.set("❌ Ошибка выполнения теста"))
+                    
+            except Exception as e:
+                print(f"ИСКЛЮЧЕНИЕ в потоке теста: {e}")
+                import traceback
+                traceback.print_exc()
+                error_msg = str(e)[:50]
+                self.root.after(0, lambda msg=error_msg: self.status_var.set(f"❌ Ошибка: {msg}"))
+            finally:
+                print("БЛОК finally - разблокировка кнопок")
+                self.test_in_progress = False
+                self.root.after(0, lambda: self.start_button.config(state='normal'))
+                self.root.after(0, lambda: self.test_button.config(state='normal'))
+                
+                # Возобновляем мониторинг если он был запущен
+                if monitoring_was_running:
+                    print("Возобновляем мониторинг")
+                    self.root.after(1000, self.start_monitoring)
+        
+        # Запускаем поток
+        import threading
+        thread = threading.Thread(target=run_test_thread)
+        thread.daemon = True
+        thread.start()
+        print("Поток теста запущен")
 # region PROTECTED - НЕ ИЗМЕНЯТЬ!!!
     def start_test_animation(self):
         """Запуск анимации выполнения теста в статус-баре"""
@@ -4300,6 +4553,8 @@ class InternetSpeedMonitor:
             self.last_check_var.set(datetime.now().strftime("%d.%m.%y %H:%M"))
             self.update_monitor_tab_colors()
             self.update_planned_speed_indicator()
+            # Принудительное обновление окна
+            self.root.update_idletasks()
             
             # Пересчитываем размер окна под новое содержимое
             self.resize_window_to_content()

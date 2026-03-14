@@ -3,11 +3,10 @@
 
 """
 Модуль-обертка для openspeedtest-cli
-Позволяет вызывать тест скорости как функцию, а не внешний процесс
+Исправленная версия с захватом вывода
 """
 
 import sys
-import os
 import io
 import contextlib
 import re
@@ -25,11 +24,14 @@ class SpeedTestRunner:
         else:
             print(f"[SpeedTest] {msg}")
     
-    def run_test(self, duration=10, threads=8, no_submit=True):
+    def run_test(self, duration=10, threads=8, no_submit=True, status_callback=None):
         """
-        Запуск теста скорости через импортированный модуль
-        Возвращает словарь с результатами
+        Запуск теста скорости с захватом вывода
         """
+        print("\n" + "="*50)
+        print("SpeedTestRunner.run_test() ИСПРАВЛЕННАЯ ВЕРСИЯ")
+        print("="*50)
+        
         # Сохраняем оригинальные аргументы
         original_argv = sys.argv.copy()
         
@@ -41,30 +43,74 @@ class SpeedTestRunner:
         if no_submit:
             sys.argv.append('--no-submit')
         
-        # Перехватываем stdout
-        stdout_capture = io.StringIO()
-        stderr_capture = io.StringIO()
+        print(f"Аргументы: {sys.argv}")
         
         # Сохраняем оригинальные stdout/stderr
         old_stdout = sys.stdout
         old_stderr = sys.stderr
         
+        # Создаем буферы для захвата вывода
+        stdout_buffer = io.StringIO()
+        stderr_buffer = io.StringIO()
+        
+        # Для callback будем также дублировать вывод в буфер
+        all_output = []
+        
+        class TeeOutput(io.StringIO):
+            def __init__(self, callback=None, buffer=None):
+                super().__init__()
+                self.callback = callback
+                self.buffer = buffer
+                self.line_buffer = ""
+            
+            def write(self, s):
+                # Сохраняем в основной буфер
+                if self.buffer:
+                    self.buffer.write(s)
+                
+                # Сохраняем все строки для парсинга
+                all_output.append(s)
+                
+                # Для callback - отправляем КАЖДУЮ строку немедленно
+                if self.callback:
+                    # Разбиваем на строки и отправляем каждую
+                    lines = s.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            # Очищаем от ANSI
+                            clean_line = self._clean_ansi(line.strip())
+                            if clean_line:
+                                # Отправляем ВСЕ clean_line без фильтрации
+                                self.callback(clean_line)
+                
+                return len(s)
+
+            def _clean_ansi(self, text):
+                """Удаляет ANSI escape последовательности"""
+                import re
+                ansi_escape = re.compile(r'\x1B\[[0-9;]*[a-zA-Z]|\x1B\[[0-9;]*')
+                return ansi_escape.sub('', text)
+        
         try:
             # Перенаправляем stdout/stderr
-            sys.stdout = stdout_capture
-            sys.stderr = stderr_capture
+            sys.stdout = TeeOutput(callback=status_callback, buffer=stdout_buffer)
+            sys.stderr = TeeOutput(callback=status_callback, buffer=stderr_buffer)
             
+            print("Попытка импорта openspeedtest_cli...")
             # Импортируем и запускаем
             import openspeedtest_cli
+            print("openspeedtest_cli импортирован")
             
             # Запускаем main
+            print("Запуск openspeedtest_cli.main()...")
             openspeedtest_cli.main()
+            print("openspeedtest_cli.main() завершен")
             
         except SystemExit:
-            # main может вызывать sys.exit() - это нормально
+            print("Поймано SystemExit (нормально)")
             pass
         except Exception as e:
-            self.log(f"Ошибка при запуске теста: {e}")
+            print(f"ИСКЛЮЧЕНИЕ: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -73,36 +119,35 @@ class SpeedTestRunner:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
             sys.argv = original_argv
+            print("stdout/stderr восстановлены")
         
-        # Получаем вывод
-        stdout = stdout_capture.getvalue()
-        stderr = stderr_capture.getvalue()
+        # Получаем полный вывод
+        stdout = stdout_buffer.getvalue()
+        stderr = stderr_buffer.getvalue()
         
-        # Диагностика через существующий логгер
+        # Объединяем весь вывод для парсинга
+        full_output = stdout + '\n'.join(all_output)
+        
+        print(f"\nПолучено {len(stdout)} символов stdout")
+        print(f"Получено {len(stderr)} символов stderr")
+        
         if stderr:
-            self.logger.error(f"STDERR from speedtest: {stderr}")
+            print(f"STDERR: {stderr[:200]}...")
         
-        # Проверяем, есть ли в выводе информация о загрузке
-        if "Download:" in stdout:
-            # Находим все строки с Download для диагностики
-            import re
-            download_lines = re.findall(r'Download:.*', stdout)
-            self.logger.info(f"Все строки Download (последние 5): {download_lines[-5:]}")
-        else:
-            self.logger.error("В выводе нет строк Download")
-            self.logger.error(f"Последние 500 символов вывода:\n{stdout[-500:]}")
-        
-        if not stdout:
-            self.log("ОШИБКА: stdout пустой!")
+        if not stdout and not all_output:
+            print("ОШИБКА: вывод пустой!")
             return None
         
         # Парсим результаты
-        return self._parse_results(stdout)
+        print("Парсинг результатов...")
+        result = self._parse_results(full_output)
+        print(f"Результат парсинга: {result}")
+        
+        return result
     
     def _clean_ansi(self, text):
         """Удаляет ANSI escape последовательности из текста"""
         import re
-        # Удаляем все ESC-последовательности
         ansi_escape = re.compile(r'\x1B\[[0-9;]*[a-zA-Z]|\x1B\[[0-9;]*')
         return ansi_escape.sub('', text)
     
@@ -123,7 +168,7 @@ class SpeedTestRunner:
         
         lines = output.split('\n')
         
-        # Парсим сервер (оставляем как есть)
+        # Парсим сервер
         for line in lines:
             if "Лучший сервер найден:" in line:
                 try:
@@ -149,51 +194,33 @@ class SpeedTestRunner:
                 except:
                     pass
         
-        # Парсим значения - ищем во всех строках, но предпочитаем последние
+        # Парсим значения
         for line in lines:
             line = line.strip()
             
-            # Пинг
             if "Ping:" in line:
                 match = re.search(r'Ping:\s+(\d+\.?\d*)', line)
                 if match:
                     result['ping'] = float(match.group(1))
             
-            # Джиттер
             if "Jitter:" in line:
                 match = re.search(r'Jitter:\s+(\d+\.?\d*)', line)
                 if match:
                     result['jitter'] = float(match.group(1))
             
-            # Download
             if "Download:" in line:
                 match = re.search(r'Download:\s+(\d+\.?\d*)', line)
                 if match:
-                    # Берем последнее ненулевое значение
                     val = float(match.group(1))
                     if val > 0:
                         result['download'] = val
             
-            # Upload
             if "Upload:" in line:
                 match = re.search(r'Upload:\s+(\d+\.?\d*)', line)
                 if match:
                     val = float(match.group(1))
                     if val > 0:
                         result['upload'] = val
-        
-        # Если не нашли в процессе, ищем в финальном блоке (последние 20 строк)
-        last_lines = lines[-20:]
-        for line in last_lines:
-            if "Ping:" in line and result['ping'] is None:
-                match = re.search(r'Ping:\s+(\d+\.?\d*)', line)
-                if match:
-                    result['ping'] = float(match.group(1))
-            
-            if "Jitter:" in line and result['jitter'] is None:
-                match = re.search(r'Jitter:\s+(\d+\.?\d*)', line)
-                if match:
-                    result['jitter'] = float(match.group(1))
         
         return result
 
