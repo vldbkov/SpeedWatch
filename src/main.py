@@ -3267,16 +3267,26 @@ class InternetSpeedMonitor:
     def export_detailed_report(self):
         """Экспорт детального отчета для провайдера"""
         try:
-            # Проверяем премиум-доступ
             if not self.premium_export.get():
-                show_premium_dialog(self.root, self._generate_report)
+                show_premium_dialog(self.root, self._activate_and_generate_report)
                 return
             
-            self._generate_report(None)
+            self._generate_report(None, None)
             
         except Exception as e:
             self.logger.error(f"Ошибка экспорта отчета: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать отчет: {e}")
+
+    def _activate_and_generate_report(self, key, email):
+        """Активация по ключу и email и генерация отчета"""
+        self.premium_export.set(True)
+        self.premium_email = email  # сохраняем email
+        self._save_premium_status_with_email(email)
+        self._refresh_settings_tab()
+        self.update_window_title_with_premium()
+        self.refresh_all_tabs()
+        messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+        self._generate_report(None, None)
 
     def _show_format_dialog(self, license_key):
         """Диалог выбора формата отчета"""
@@ -4925,25 +4935,24 @@ class InternetSpeedMonitor:
                 show_premium_dialog(self.root, self._activate_and_export_graph)
                 return
             
-            self._do_export_graph(None)
+            self._do_export_graph(None, None)
             
         except Exception as e:
             self.logger.error(f"Ошибка экспорта графика: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать график: {e}")
     
-    def _activate_and_export_graph(self, license_key):
-        """Активация и экспорт графика"""
-        if license_key:
-            self.premium_export.set(True)
-            self._save_premium_status()
-            self._refresh_settings_tab()
-            self.update_window_title_with_premium()
-            self.refresh_all_tabs()
-            messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
-        
-        self._do_export_graph(None)
+    def _activate_and_export_graph(self, key, email):
+        """Активация по ключу и email и экспорт графика"""
+        self.premium_export.set(True)
+        self.premium_email = email
+        self._save_premium_status_with_email(email)
+        self._refresh_settings_tab()
+        self.update_window_title_with_premium()
+        self.refresh_all_tabs()
+        messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+        self._do_export_graph(None, None)
 
-    def _do_export_graph(self, license_key):
+    def _do_export_graph(self, key=None, email=None):
         """Фактическое выполнение экспорта графика (после активации)"""
         try:
             filename = filedialog.asksaveasfilename(
@@ -4983,25 +4992,24 @@ class InternetSpeedMonitor:
                 show_premium_dialog(self.root, self._activate_and_export_log)
                 return
             
-            self._do_export_log(None)
+            self._do_export_log(None, None)
             
         except Exception as e:
             self.logger.error(f"Ошибка экспорта журнала: {e}")
             messagebox.showerror("Ошибка", f"Не удалось экспортировать журнал: {e}")
     
-    def _activate_and_export_log(self, license_key):
-        """Активация и экспорт журнала"""
-        if license_key:
-            self.premium_export.set(True)
-            self._save_premium_status()
-            self._refresh_settings_tab()
-            self.update_window_title_with_premium()
-            self.refresh_all_tabs()
-            messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
-        
-        self._do_export_log(None)
+    def _activate_and_export_log(self, key, email):
+        """Активация по ключу и email и экспорт журнала"""
+        self.premium_export.set(True)
+        self.premium_email = email
+        self._save_premium_status_with_email(email)
+        self._refresh_settings_tab()
+        self.update_window_title_with_premium()
+        self.refresh_all_tabs()
+        messagebox.showinfo("Активация", "✅ Премиум-доступ активирован!")
+        self._do_export_log(None, None)
 
-    def _do_export_log(self, license_key):
+    def _do_export_log(self, key=None, email=None):
         """Фактическое выполнение экспорта (после активации)"""
         try:
             filename = filedialog.asksaveasfilename(
@@ -5128,6 +5136,27 @@ class InternetSpeedMonitor:
             self.logger.info("Статус премиум-доступа сохранен")
             
             # Обновляем заголовок окна с премиум-статусом
+            self.update_window_title_with_premium()
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка сохранения статуса премиум: {e}")
+
+    def _save_premium_status_with_email(self, email):
+        """Сохранение статуса премиум-активации с email"""
+        try:
+            db = self.get_db()
+            if not db:
+                self.logger.error("Не удалось подключиться к БД для сохранения премиум-статуса")
+                return
+            
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                       ('premium_export', '1'))
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", 
+                       ('premium_email', email))
+            db.commit()
+            db.close()
+            self.logger.info(f"Статус премиум-доступа сохранен для email: {email}")
+            
             self.update_window_title_with_premium()
             
         except Exception as e:

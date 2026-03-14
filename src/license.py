@@ -43,7 +43,25 @@ class LicenseManager:
             
         except Exception:
             return False
-    
+
+    @staticmethod
+    def validate_key_with_email(email: str, license_key: str) -> bool:
+        
+        if not email or not license_key:
+            return False
+        
+        try:
+            # Сначала пробуем проверить как старый ключ (без email)
+            if LicenseManager.validate_key(license_key):
+                return True
+            
+            # Если не прошел, пробуем проверить с email
+            expected = LicenseManager.generate_key(email)
+            
+            return license_key == expected
+        except Exception as e:
+            return False
+
     @staticmethod
     def generate_key(user_identifier: str) -> str:
         """
@@ -103,57 +121,68 @@ class LicenseManager:
 
 def show_premium_dialog(parent, callback):
     """
-    Показать диалог ввода ключа для премиум-функции
+    Показать диалог ввода email и ключа для премиум-функции
     """
-    # Создаем диалоговое окно
     dialog = tk.Toplevel(parent)
-    dialog.title("🔐 Премиум-функция")
-    dialog.geometry("450x280")
+    dialog.title("🔐 Премиум-активация")
+    dialog.geometry("380x320")  # было 400x320
     dialog.resizable(False, False)
     dialog.transient(parent)
     dialog.grab_set()
     
     # Центрируем
     dialog.update_idletasks()
-    x = parent.winfo_x() + (parent.winfo_width() - 450) // 2
-    y = parent.winfo_y() + (parent.winfo_height() - 280) // 2
+    x = parent.winfo_x() + (parent.winfo_width() - 400) // 2
+    y = parent.winfo_y() + (parent.winfo_height() - 320) // 2
     dialog.geometry(f"+{x}+{y}")
     
     # Заголовок
-    ttk.Label(dialog, text="⚡ Экспорт в CSV", 
-              font=('Arial', 14, 'bold')).pack(pady=(15, 5))
+    ttk.Label(dialog, text="⚡ Активация премиум-доступа", 
+              font=('Arial', 12, 'bold')).pack(pady=(15, 10))
     
     # Пояснение
     ttk.Label(dialog, 
-             text="Экспорт данных в CSV — это премиум-функция.\n"
-                  "Введите ключ активации для доступа.",
-             font=('Arial', 10), justify='center').pack(pady=(0, 15))
+             text="Введите email и ключ, полученный от разработчика",
+             font=('Arial', 9), justify='center').pack(pady=(0, 15))
     
-    # Поле ввода ключа
-    frame = ttk.Frame(dialog)
-    frame.pack(pady=10)
+    # Email
+    frame_email = ttk.Frame(dialog)
+    frame_email.pack(pady=5, padx=20)
     
-    ttk.Label(frame, text="Ключ активации:", 
-              font=('Arial', 10)).pack(side='left', padx=(0, 5))
+    ttk.Label(frame_email, text="Email:", font=('Arial', 10)).pack(anchor='w')
+    email_var = tk.StringVar()
+    email_entry = ttk.Entry(frame_email, textvariable=email_var, width=28, 
+                            font=('Arial', 10))
+    email_entry.pack(pady=2)
     
+    # Ключ
+    frame_key = ttk.Frame(dialog)
+    frame_key.pack(pady=5, padx=20)
+    
+    ttk.Label(frame_key, text="Ключ:", font=('Arial', 10)).pack(anchor='w')
     key_var = tk.StringVar()
-    key_entry = ttk.Entry(frame, textvariable=key_var, width=20, 
-                          font=('Arial', 11, 'bold'))
-    key_entry.pack(side='left')
-    key_entry.focus()
+    key_entry = ttk.Entry(frame_key, textvariable=key_var, width=28, 
+                          font=('Arial', 10, 'bold'), show='*')
+    key_entry.pack(pady=2)
     
     # Кнопки
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(pady=20)
     
     def on_activate():
+        email = email_var.get().strip()
         key = key_var.get().strip()
-        if LicenseManager.validate_key(key):
+        
+        if not email or not key:
+            messagebox.showerror("Ошибка", "Введите email и ключ")
+            return
+        
+        if LicenseManager.validate_key_with_email(email, key):
             dialog.destroy()
-            callback(key)  # Вызываем функцию экспорта
+            callback(key, email)  # передаем и ключ и email
         else:
             messagebox.showerror("Ошибка", 
-                               "❌ Неверный ключ активации.\n\n"
+                               "❌ Неверный email или ключ активации.\n\n"
                                "Проверьте правильность ввода или обратитесь к разработчику.")
     
     ttk.Button(btn_frame, text="Активировать", 
@@ -162,42 +191,28 @@ def show_premium_dialog(parent, callback):
     ttk.Button(btn_frame, text="Отмена", 
                command=dialog.destroy).pack(side='left', padx=5)
     
-    # Ссылка на разработчика (копирование в буфер)
+    # Ссылка на разработчика
     link_frame = ttk.Frame(dialog)
     link_frame.pack(pady=(10, 0))
     
     ttk.Label(link_frame, text="Нет ключа? Напишите разработчику: ", 
               font=('Arial', 9)).pack(side='left')
     
-    # Создаем метку с email (выглядит как ссылка)
-    email_label = tk.Label(link_frame, text="vldbkov@gmail.com", 
+    email_link = tk.Label(link_frame, text="vldbkov@gmail.com", 
                           fg="blue", cursor="hand2",
                           font=('Arial', 9, 'underline'))
-    email_label.pack(side='left')
+    email_link.pack(side='left')
     
     def copy_email(event=None):
-        """Копирование email в буфер обмена"""
-        try:
-            # Копируем в буфер обмена
-            dialog.clipboard_clear()
-            dialog.clipboard_append("vldbkov@gmail.com")
-            
-            # Показываем уведомление
-            messagebox.showinfo("Скопировано", 
-                              "✅ Email скопирован!\n\n"
-                              "Напишите нам\n"
-                              "и мы пришлём вам ключ.")
-        except Exception as e:
-            print(f"Ошибка копирования: {e}")
+        dialog.clipboard_clear()
+        dialog.clipboard_append("vldbkov@gmail.com")
+        messagebox.showinfo("Скопировано", "✅ Email скопирован!\n\nНапишите нам и мы пришлём вам ключ.")
     
-    # Привязываем события
-    email_label.bind("<Button-1>", copy_email)
-    email_label.bind("<Enter>", lambda e: email_label.config(cursor="hand2"))
-    
-    # Комментарий под ссылкой
-    ttk.Label(dialog, text="(нажмите на адрес, чтобы скопировать)",
-              font=('Arial', 8), foreground='gray').pack(pady=(2, 0))
+    email_link.bind("<Button-1>", copy_email)
     
     # Примечание
-    ttk.Label(dialog, text="Ключ действует для всех функций экспорта",
+    ttk.Label(dialog, text="Ключ привязан к email и действует для всех функций экспорта",
               font=('Arial', 8), foreground='gray').pack(pady=(15, 0))
+    
+    # Фокус на поле email
+    email_entry.focus()
